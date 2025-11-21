@@ -1,0 +1,241 @@
+
+{
+  "common": {
+    "loading": "Φόρτωση...",
+    "error": "Σφάλμα",
+    "cancel": "Ακύρωση",
+    "save": "Αποθήκευση",
+    "confirm": "Επιβεβαίωση",
+    "close": "Κλείσιμο",
+    "edit": "Επεξεργασία",
+    "quantity": "Ποσότητα",
+    "location": "Τοποθεσία",
+    "na": "Δ/Α",
+    "material": "Υλικό"
+  },
+  "header": {
+    "title": "Ιχνηλάτης Αποθήκης",
+    "welcome": "Καλώς ορίσατε",
+    "logout": "Αποσύνδεση"
+  },
+  "roles": {
+    "manager": "Διαχειριστής",
+    "operator": "Χειριστής",
+    "orderkeeper": "Υπεύθυνος Παραγγελιών",
+    "machineoperator": "Χειριστής Μηχανής",
+    "infraoperator": "Χειριστής Υποδομών",
+    "storekeeper": "Αποθηκάριος"
+  },
+  "tabs": {
+    "operator": "Χειριστής",
+    "search": "Αναζήτηση",
+    "manager": "Διαχειριστής",
+    "transactions": "Συναλλαγές",
+    "batch-create": "Μαζική Δημιουργία",
+    "orders": "Παραγγελίες",
+    "scan-product-sheet": "Σάρωση Φύλλου Παρ.",
+    "daily-logs": "Ημερήσιο Αρχείο",
+    "phase-manager": "Διαχείριση Φάσεων",
+    "pdfImport": "Εισαγωγή Παραγγελιών από PDF",
+    "live-phases": "Ενεργές Φάσεις"
+  },
+  "login": {
+    "title": "Ιχνηλάτης Αποθήκης",
+    "subtitle": "Παρακαλώ συνδεθείτε στο λογαριασμό σας",
+    "usernamePlaceholder": "Όνομα χρήστη",
+    "passwordPlaceholder": "Κωδικός πρόσβασης",
+    "signIn": "Σύνδεση",
+    "defaultLoginHint": "Προεπιλεγμένες Συνδέσεις: Manager/Manager, OrderKeeper/OrderKeeper, κλπ."
+  },
+  "operator": {
+    "title": "Ενέργειες Χειριστή",
+    "scanPrompt": "Σαρώστε το QR code ενός υλικού για να δείτε λεπτομέρειες και να εκτελέσετε ενέργειες.",
+    "startScannerButton": "Έναρξη Σαρωτή QR",
+    "cancelScanButton": "Ακύρωση Σάρωσης",
+    "scanErrorInvalidFormat": "Μη έγκυρη μορφή QR code.",
+    "scanErrorParseFailed": "Αποτυχία ανάλυσης QR code. Δεν είναι έγκυρος κωδικός υλικού.",
+    "materialConsumedError": "Το υλικό {{materialCode}} (ID: {{id}}) έχει ήδη καταναλωθεί πλήρως.",
+    "materialNotFoundError": "Το υλικό δεν βρέθηκε στη βάση δεδομένων. Παρακαλώ καταχωρήστε το πρώτα.",
+    "materialDetailsTitle": "Λεπτομέρειες Υλικού",
+    "materialCode": "Κωδικός Υλικού",
+    "id": "ID",
+    "remainingQuantity": "Εναπομένουσα Ποσότητα",
+    "chooseAction": "Επιλέξτε μια Ενέργεια:",
+    "fullConsumption": "Πλήρης Κατανάλωση",
+    "placement": "Τοποθέτηση",
+    "movement": "Μετακίνηση",
+    "partialConsumption": "Μερική Κατανάλωση",
+    "actionsDisabledHint": "Σημείωση: Οι ενέργειες είναι απενεργοποιημένες μέχρι το υλικό να έχει αρχική τοποθέτηση.",
+    "scanAnother": "Σάρωση άλλου υλικού"
+  },
+  "search": {
+    "title": "Αναζήτηση Υλικών",
+    "placeholder": "Εισάγετε Κωδικό Υλικού...",
+    "loading": "Φόρτωση υλικών...",
+    "noResults": "Δεν βρέθηκαν υλικά για \"{{searchTerm}}\".",
+    "showHistory": "Εμφάνιση Ιστορικού",
+    "hideHistory": "Απόκρυψη Ιστορικού",
+    "showQrCode": "Εμφάνιση QR Code",
+    "historyTitle": "Ιστορικό Μετακινήσεων/Κατανάλωσης",
+    "historyType": {
+      "CREATED": "ΔΗΜΙΟΥΡΓΗΘΗΚΕ",
+      "PLACED": "ΤΟΠΟΘΕΤΗΘΗΚΕ",
+      "MOVED": "ΜΕΤΑΚΙΝΗΘΗΚΕ",
+      "CONSUMED": "ΚΑΤΑΝΑΛΩΘΗΚΕ",
+      "PARTIALLY_CONSUMED": "ΜΕΡΙΚΩΣ ΚΑΤΑΝΑΛΩΘΗΚΕ"
+    },
+    "historyDetails": {
+      "quantity": "Ποσότητα: {{quantity}}",
+      "placedTo": "Προς: {{area}}, Θέση {{position}}",
+      "movedFromTo": "Από: {{fromArea}}, Θέση {{fromPosition}} -> Προς: {{toArea}}, Θέση {{toPosition}}",
+      "consumed": "Κωδικός Παραγωγής: {{productionCode}}, Καταναλώθηκε: {{consumed}}",
+      "partiallyConsumed": "Κωδ. Παρ.: {{productionCode}}, Καταναλώθηκε: {{consumed}}, Απομένουν: {{remaining}}, Νέα Τοποθεσία: {{newLocationArea}}, Θέση {{newLocationPosition}}"
+    }
+  },
+  "qrModal": {
+    "title": "Ετικέτα Υλικού",
+    "printLabel": "Εκτύπωση Ετικέτας"
+  },
+  "actionModal": {
+    "titles": {
+      "CONSUMPTION": "Καταγραφή Πλήρους Κατανάλωσης",
+      "PLACEMENT": "Καταγραφή Τοποθέτησης",
+      "MOVEMENT": "Καταγραφή Μετακίνησης",
+      "PARTIAL_CONSUMPTION": "Καταγραφή Μερικής Κατανάλωσης & Επανατοποθέτησης"
+    },
+    "confirmActionTitle": "Επιβεβαίωση Ενέργειας",
+    "confirmMessage": "Είστε σίγουροι ότι θέλετε να προχωρήσετε; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.",
+    "action": "Ενέργεια",
+    "material": "Υλικό",
+    "consuming": "Κατανάλωση",
+    "units": "μονάδες",
+    "yesConfirm": "Ναι, Επιβεβαίωση",
+    "confirming": "Επιβεβαίωση...",
+    "saving": "Αποθήκευση...",
+    "confirmButton": "Επιβεβαίωση Ενέργειας",
+    "productionCodeLabel": "Κωδικός Παραγωγής / Εντολή Εργασίας",
+    "productionCodeRequired": "Ο κωδικός παραγωγής είναι υποχρεωτικός.",
+    "newAreaLabel": "Νέα Περιοχή",
+    "newPositionLabel": "Νέα Θέση",
+    "sheetsConsumedLabel": "Φύλλα που Καταναλώθηκαν (Μέγ.: {{max}})",
+    "invalidQuantity": "Μη έγκυρη ποσότητα. Πρέπει να είναι μεταξύ 1 και {{max}}.",
+    "newLocationForRemainder": "Νέα Τοποθεσία για το Υπόλοιπο"
+  },
+  "manager": {
+    "title": "Διαχείριση Χρηστών",
+    "exportCsv": "Εξαγωγή CSV",
+    "createNewUser": "+ Δημιουργία Νέου Χρήστη",
+    "loading": "Φόρτωση χρηστών...",
+    "languageSettings": {
+        "title": "Ρυθμίσεις Γλώσσας"
+    },
+    "table": {
+      "username": "Όνομα χρήστη",
+      "role": "Ρόλος(οι)",
+      "allowedTabs": "Επιτρεπόμενες Καρτέλες",
+      "lastLogin": "Τελευταία Σύνδεση",
+      "actions": "Ενέργειες"
+    },
+    "userModal": {
+      "editTitle": "Επεξεργασία Χρήστη",
+      "createTitle": "Δημιουργία Νέου Χρήστη",
+      "usernameLabel": "Όνομα χρήστη",
+      "passwordLabel": "Κωδικός πρόσβασης",
+      "newPasswordLabel": "Νέος Κωδικός (προαιρετικό)",
+      "roleLabel": "Ρόλοι",
+      "nonRemovable": "δεν αφαιρείται",
+      "saveButton": "Αποθήκευση Χρήστη",
+      "savingButton": "Αποθήκευση...",
+      "errorFillFields": "Παρακαλώ συμπληρώστε όλα τα απαιτούμενα πεδία και επιλέξτε τουλάχιστον έναν ρόλο."
+    }
+  },
+  "batchCreate": {
+    "title": "Μαζική Δημιουργία Υλικών",
+    "materialCodePlaceholder": "Κωδικός Υλικού",
+    "quantityPlaceholder": "Ποσότητα",
+    "addRow": "+ Προσθήκη Σειράς",
+    "saveAll": "Αποθήκευση Όλων",
+    "saving": "Αποθήκευση...",
+    "generatedLabelsTitle": "Δημιουργημένες Ετικέτες",
+    "printStickerLayout": "Εκτύπωση σελίδας με Αυτοκόλλητα (A4)",
+    "printFullBleedLayout": "Εκτύπωση σελίδας Full-Bleed (A4)"
+  },
+  "transactions": {
+    "title": "Ιστορικό Συναλλαγών",
+    "loading": "Φόρτωση συναλλαγών...",
+    "noResults": "Δεν βρέθηκαν πρόσφατες κινήσεις ή συναλλαγές.",
+    "table": {
+      "id": "#",
+      "itemId": "ID Αντικειμένου",
+      "change": "Αλλαγή",
+      "reason": "Αιτία",
+      "user": "Χρήστης",
+      "date": "Ημερομηνία"
+    }
+  },
+  "orderkeeper": {
+    "title": "Δημιουργία Παραγγελίας",
+    "orderNumber": "Αριθμός Παραγγελίας",
+    "orderNumberPlaceholder": "π.χ., ORD-2024-001",
+    "currentOrder": "Τρέχουσα Παραγγελία",
+    "changeOrder": "Αλλαγή",
+    "productionSheets": "Φύλλα Παραγωγής",
+    "sheetNumber": "Αρ. Φύλλου",
+    "productId": "ID Προϊόντος",
+    "quantity": "Ποσότητα",
+    "addProductId": "Προσθήκη Νέου ID Προϊόντος",
+    "materials": "Υλικά (ανά τεμάχιο)",
+    "materialId": "ID Υλικού",
+    "qtyPerPiece": "Ποσότητα / Τεμ.",
+    "addMaterial": "Προσθήκη Υλικού",
+    "phases": "Φάσεις (ανά τεμάχιο)",
+    "phaseId": "Φάση",
+    "setupTime": "Χρόνος Προετ. (λεπτά)",
+    "prodTime": "Χρόνος Παρ. (λεπτά)",
+    "addPhase": "Προσθήκη Φάσης",
+    "addSheet": "+ Προσθήκη Φύλλου Παραγωγής",
+    "saveOrder": "Αποθήκευση & Λήψη QRs",
+    "saving": "Αποθήκευση...",
+    "printAllQRs": "Εκτύπωση QR Codes για όλα τα Φύλλα Παραγωγής",
+    "orderCompletePrompt": "Η παραγγελία αποθηκεύτηκε. Να γίνει εκτύπωση των QR codes;",
+    "reprintTitle": "Επανεκτύπωση QR για Παραγγελία: {{orderNumber}}",
+    "noSheetsFound": "Δεν βρέθηκαν φύλλα παραγωγής για αυτήν την παραγγελία.",
+    "printSelected": "Εκτύπωση Επιλεγμένων",
+    "printAll": "Εκτύπωση Όλων",
+    "sheetNumberHeader": "Αρ. Φύλλου",
+    "productIdHeader": "ID Προϊόντος",
+    "quantityHeader": "Ποσότητα"
+  },
+  "machineOperator": {
+    "title": "Παρακολούθηση Φάσεων Παραγωγής",
+    "scanPrompt": "Σαρώστε ένα QR φύλλου παραγωγής για να ξεκινήσετε.",
+    "startScan": "Έναρξη Σάρωσης",
+    "sheetDetails": "Λεπτομέρειες Φύλλου",
+    "orderNum": "Παραγγελία",
+    "sheetNum": "Φύλλο",
+    "product": "Προϊόν",
+    "qty": "Ποσ.",
+    "phases": "Φάσεις",
+    "status": "Κατάσταση",
+    "completed": "Ολοκληρώθηκε",
+    "notStarted": "Δεν Ξεκίνησε",
+    "inProgress": "Σε Εξέλιξη",
+    "startPhase": "Έναρξη Φάσης",
+    "finishFull": "Ολοκλήρωση Παρτίδας",
+    "finishPartial": "Μερική Ολοκλήρωση",
+    "startMaterialFind": "Έναρξη Εύρεσης Υλικού",
+    "materialFound": "Το Υλικό Βρέθηκε",
+    "findingMaterial": "Εύρεση Υλικού...",
+    "phaseInProgress": "Φάση σε Εξέλιξη",
+    "enterPartialQty": "Εισάγετε Ολοκληρωμένη Ποσότητα",
+    "quantityDone": "Ποσότητα που έγινε",
+    "maxQty": "Μέγ",
+    "submit": "Υποβολή",
+    "materialInfo": "Πληροφορίες Υλικών"
+  },
+  "infraOperator": {
+    "title": "Ημερήσιο Αρχείο Λειτουργιών",
+    "selectDate": "Επιλέξτε ημερομηνία για την αναφορά:",
+    "exportCsv": "Εξαγωγή Ημερήσιου CSV"
+  }
+}

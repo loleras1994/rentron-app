@@ -1,0 +1,241 @@
+
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "cancel": "Cancel",
+    "save": "Save",
+    "confirm": "Confirm",
+    "close": "Close",
+    "edit": "Edit",
+    "quantity": "Quantity",
+    "location": "Location",
+    "na": "N/A",
+    "material": "Material"
+  },
+  "header": {
+    "title": "Warehouse Tracker",
+    "welcome": "Welcome",
+    "logout": "Logout"
+  },
+  "roles": {
+    "manager": "Manager",
+    "operator": "Operator",
+    "orderkeeper": "Order Keeper",
+    "machineoperator": "Machine Operator",
+    "infraoperator": "Infra Operator",
+    "storekeeper": "Storekeeper"
+  },
+  "tabs": {
+    "operator": "Operator",
+    "search": "Search",
+    "manager": "Manager",
+    "transactions": "Transactions",
+    "batch-create": "Batch Create",
+    "orders": "Orders",
+    "scan-product-sheet": "Scan Product Sheet",
+    "daily-logs": "Daily Logs",
+    "phase-manager": "Phase Manager",
+    "pdfImport": "Import PDF Orders",
+    "live-phases": "Live Phases"
+  },
+  "login": {
+    "title": "Warehouse Tracker",
+    "subtitle": "Please sign in to your account",
+    "usernamePlaceholder": "Username",
+    "passwordPlaceholder": "Password",
+    "signIn": "Sign in",
+    "defaultLoginHint": "Default Logins: Manager/Manager, OrderKeeper/OrderKeeper, etc."
+  },
+  "operator": {
+    "title": "Operator Actions",
+    "scanPrompt": "Scan a material's QR code to view details and perform actions.",
+    "startScannerButton": "Start QR Scanner",
+    "cancelScanButton": "Cancel Scan",
+    "scanErrorInvalidFormat": "Invalid QR code format.",
+    "scanErrorParseFailed": "Failed to parse QR code. Not a valid material code.",
+    "materialConsumedError": "Material {{materialCode}} (ID: {{id}}) has already been fully consumed.",
+    "materialNotFoundError": "Material not found in the database. Please register it first.",
+    "materialDetailsTitle": "Material Details",
+    "materialCode": "Material Code",
+    "id": "ID",
+    "remainingQuantity": "Remaining Quantity",
+    "chooseAction": "Choose an Action:",
+    "fullConsumption": "Full Consumption",
+    "placement": "Placement",
+    "movement": "Movement",
+    "partialConsumption": "Partial Consumption",
+    "actionsDisabledHint": "Note: Actions are disabled until the material has an initial placement.",
+    "scanAnother": "Scan another material"
+  },
+  "search": {
+    "title": "Search Materials",
+    "placeholder": "Enter Material Code...",
+    "loading": "Loading materials...",
+    "noResults": "No materials found for \"{{searchTerm}}\".",
+    "showHistory": "Show History",
+    "hideHistory": "Hide History",
+    "showQrCode": "Show QR Code",
+    "historyTitle": "Movement/Consumption History",
+    "historyType": {
+      "CREATED": "CREATED",
+      "PLACED": "PLACED",
+      "MOVED": "MOVED",
+      "CONSUMED": "CONSUMED",
+      "PARTIALLY_CONSUMED": "PARTIALLY CONSUMED"
+    },
+    "historyDetails": {
+      "quantity": "Quantity: {{quantity}}",
+      "placedTo": "To: {{area}}, Pos {{position}}",
+      "movedFromTo": "From: {{fromArea}}, Pos {{fromPosition}} -> To: {{toArea}}, Pos {{toPosition}}",
+      "consumed": "Production Code: {{productionCode}}, Consumed: {{consumed}}",
+      "partiallyConsumed": "Prod. Code: {{productionCode}}, Consumed: {{consumed}}, Remaining: {{remaining}}, New Location: {{newLocationArea}}, Pos {{newLocationPosition}}"
+    }
+  },
+  "qrModal": {
+    "title": "Material Label",
+    "printLabel": "Print Label"
+  },
+  "actionModal": {
+    "titles": {
+      "CONSUMPTION": "Log Full Consumption",
+      "PLACEMENT": "Log Placement",
+      "MOVEMENT": "Log Movement",
+      "PARTIAL_CONSUMPTION": "Log Partial Consumption & Reposition"
+    },
+    "confirmActionTitle": "Confirm Action",
+    "confirmMessage": "Are you sure you want to proceed? This action cannot be undone.",
+    "action": "Action",
+    "material": "Material",
+    "consuming": "Consuming",
+    "units": "units",
+    "yesConfirm": "Yes, Confirm",
+    "confirming": "Confirming...",
+    "saving": "Saving...",
+    "confirmButton": "Confirm Action",
+    "productionCodeLabel": "Production Code / Job Order",
+    "productionCodeRequired": "Production code is required.",
+    "newAreaLabel": "New Area",
+    "newPositionLabel": "New Position",
+    "sheetsConsumedLabel": "Sheets Consumed (Max: {{max}})",
+    "invalidQuantity": "Invalid quantity. Must be between 1 and {{max}}.",
+    "newLocationForRemainder": "New Location for Remainder"
+  },
+  "manager": {
+    "title": "User Management",
+    "exportCsv": "Export CSV",
+    "createNewUser": "+ Create New User",
+    "loading": "Loading users...",
+    "languageSettings": {
+        "title": "Language Settings"
+    },
+    "table": {
+      "username": "Username",
+      "role": "Role(s)",
+      "allowedTabs": "Allowed Tabs",
+      "lastLogin": "Last Login",
+      "actions": "Actions"
+    },
+    "userModal": {
+      "editTitle": "Edit User",
+      "createTitle": "Create New User",
+      "usernameLabel": "Username",
+      "passwordLabel": "Password",
+      "newPasswordLabel": "New Password (optional)",
+      "roleLabel": "Roles",
+      "nonRemovable": "non-removable",
+      "saveButton": "Save User",
+      "savingButton": "Saving...",
+      "errorFillFields": "Please fill all required fields and select at least one role."
+    }
+  },
+  "batchCreate": {
+    "title": "Batch Create Materials",
+    "materialCodePlaceholder": "Material Code",
+    "quantityPlaceholder": "Quantity",
+    "addRow": "+ Add Row",
+    "saveAll": "Save All",
+    "saving": "Saving...",
+    "generatedLabelsTitle": "Generated Labels",
+    "printStickerLayout": "Print Sticker Layout (A4 Sheet)",
+    "printFullBleedLayout": "Print Full-Bleed Layout (A4 Sheet)"
+  },
+  "transactions": {
+    "title": "Transaction History",
+    "loading": "Loading transactions...",
+    "noResults": "No recent movements or transactions found.",
+    "table": {
+      "id": "#",
+      "itemId": "Item ID",
+      "change": "Change",
+      "reason": "Reason",
+      "user": "User",
+      "date": "Date"
+    }
+  },
+  "orderkeeper": {
+    "title": "Order Creation",
+    "orderNumber": "Order Number",
+    "orderNumberPlaceholder": "e.g., ORD-2024-001",
+    "currentOrder": "Current Order",
+    "changeOrder": "Change",
+    "productionSheets": "Production Sheets",
+    "sheetNumber": "Sheet Number",
+    "productId": "Product ID",
+    "quantity": "Quantity",
+    "addProductId": "Add New Product ID",
+    "materials": "Materials (per piece)",
+    "materialId": "Material ID",
+    "qtyPerPiece": "Qty / Piece",
+    "addMaterial": "Add Material",
+    "phases": "Phases (per piece)",
+    "phaseId": "Phase",
+    "setupTime": "Setup Time (min)",
+    "prodTime": "Prod. Time (min)",
+    "addPhase": "Add Phase",
+    "addSheet": "+ Add Production Sheet",
+    "saveOrder": "Save Order & Get QRs",
+    "saving": "Saving...",
+    "printAllQRs": "Print QR Codes for all Production Sheets",
+    "orderCompletePrompt": "Order Saved. Print QR codes for all production sheets?",
+    "reprintTitle": "Re-print QR Codes for Order: {{orderNumber}}",
+    "noSheetsFound": "No production sheets found for this order.",
+    "printSelected": "Print Selected",
+    "printAll": "Print All",
+    "sheetNumberHeader": "Sheet #",
+    "productIdHeader": "Product ID",
+    "quantityHeader": "Quantity"
+  },
+  "machineOperator": {
+    "title": "Production Phase Tracking",
+    "scanPrompt": "Scan a Production Sheet QR code to begin.",
+    "startScan": "Start Scanning",
+    "sheetDetails": "Sheet Details",
+    "orderNum": "Order",
+    "sheetNum": "Sheet",
+    "product": "Product",
+    "qty": "Qty",
+    "phases": "Phases",
+    "status": "Status",
+    "completed": "Completed",
+    "notStarted": "Not Started",
+    "inProgress": "In Progress",
+    "startPhase": "Start Phase",
+    "finishFull": "Finish Full Batch",
+    "finishPartial": "Partial Finish",
+    "startMaterialFind": "Start Find Material",
+    "materialFound": "Material Found",
+    "findingMaterial": "Finding Material...",
+    "phaseInProgress": "Phase In Progress",
+    "enterPartialQty": "Enter Quantity Finished",
+    "quantityDone": "Quantity Done",
+    "maxQty": "Max",
+    "submit": "Submit",
+    "materialInfo": "Material Information"
+  },
+  "infraOperator": {
+    "title": "Daily Operations Log",
+    "selectDate": "Select a date to generate the report:",
+    "exportCsv": "Export Daily CSV"
+  }
+}
