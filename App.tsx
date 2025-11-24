@@ -11,7 +11,7 @@ import { useTranslation } from './hooks/useTranslation'; // Import useTranslatio
 import BatchCreateView from './components/BatchCreateView';
 import TransactionView from './components/TransactionView';
 import OrderKeeperView from './components/OrderKeeperView';
-import MachineOperatorView from './components/MachineOperatorView';
+import MachineOperatorView from './components/oldMachineOperatorView';
 import InfraOperatorView from './components/InfraOperatorView';
 import PhaseManagerView from './components/PhaseManagerView';
 import PdfOrderImportView from './components/PdfOrderImportView';

@@ -16,7 +16,7 @@ const OperatorView: React.FC = () => {
   const { findMaterialById, findMaterialByIdOnline } = useWarehouse();
   const { t } = useTranslation();
   
-  const hasLocation = !!material.location;        
+  const hasLocation = material?.location !== null && material?.location !== undefined;       
   const isFullyConsumed = material ? material.currentQuantity <= 0 : false;
 
 
@@ -136,12 +136,12 @@ const OperatorView: React.FC = () => {
               <strong>{t("operator.remainingQuantity")}:</strong>{" "}
               {material.currentQuantity} / {material.initialQuantity}
             </p>
-            <p>
-              <strong>{t("common.location")}:</strong>{" "}
-              {material.location
-                ? `${material.location.area}, Position ${material.location.position}`
-                : t("common.na")}
-            </p>
+			<p>
+			  <strong>{t("common.location")}:</strong>{" "}
+			  {material && material.location
+				? `${material.location.area}, Position ${material.location.position}`
+				: t("common.na")}
+			</p>
           </div>
 
           <div className="mt-6">

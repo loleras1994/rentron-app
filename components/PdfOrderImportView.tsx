@@ -72,15 +72,16 @@ const PdfOrderImportView: React.FC = () => {
         sheetsToCreate
       );
 
-	  setGeneratedSheets(
-	    newSheets.map(s => ({
-		  id: s.id,
-		  productId: s.product_id,
-		  productionSheetNumber: s.production_sheet_number,
-		  quantity: s.quantity,
-		  qrValue: s.qr_value,             // FIX
-	    }))
-	  );
+    setGeneratedSheets(
+      newSheets.map(s => ({
+        id: s.id,
+        orderNumber: parsed.orderNumber,  
+        productId: s.productId,          
+        productionSheetNumber: s.productionSheetNumber,
+        quantity: s.quantity,
+        qrValue: s.qrValue,
+      }))
+    );
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Failed to create sheets");
