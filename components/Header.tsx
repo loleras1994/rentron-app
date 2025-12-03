@@ -15,7 +15,7 @@ import { useTranslation } from '../hooks/useTranslation';
 
 interface HeaderProps {
   currentView: View;
-  setCurrentView: (view: View) => void;
+  setCurrentView: React.Dispatch<React.SetStateAction<View>>;
   allowedTabs: AllowedView[];
   username: string;
   logout: () => void;

@@ -48,6 +48,7 @@ const resolveMaterialsForPhase = (
 };
 
 const MachineOperatorView: React.FC = () => {
+  console.log("📌 MachineOperatorView rendered");
   const { t } = useTranslation();
   const { user } = useAuth();
   const { materials, loading: warehouseLoading } = useWarehouse();
@@ -122,7 +123,9 @@ const MachineOperatorView: React.FC = () => {
     setError(null);
     try {
       const data = await api.getProductionSheetByQr(decodedText);
+      console.log("📌 Sheet received:", data);
       setSheet(data);
+      setError("DEBUG: scanned!");
 
       // Check if the sheet contains phase 2 or 30 (find material)
       const hasPhase2or30 = data.product?.phases?.some((p) =>
@@ -367,6 +370,8 @@ const MachineOperatorView: React.FC = () => {
       });
 
       setActiveLog(newLog);
+      console.log("🔥 AFTER START — phaseLogs:", JSON.stringify(sheet.phaseLogs, null, 2));
+
 
       // Καθαρίζουμε τους pending times για αυτό το phase
       setPendingStageTimes((prev) => {
@@ -414,10 +419,10 @@ const MachineOperatorView: React.FC = () => {
     const phaseId = activeLog.phaseId;
     const remainingForPhase = computeRemainingForPhase(phaseId);
 
-    if (remainingForPhase <= 0) {
-      alert(
-        t("common.nothingToFinish") || "Nothing to finish for this phase."
-      );
+    if (remainingForPhase <= 0 && activeLog) {
+      // allow finishing even if remaining = 0
+    } else if (remainingForPhase <= 0) {
+      alert(t("common.nothingToFinish"));
       return;
     }
 
@@ -437,6 +442,7 @@ const MachineOperatorView: React.FC = () => {
 
     setIsLoading(true);
     try {
+      console.log("🔥 BEFORE FINISH — phaseLogs:", JSON.stringify(sheet.phaseLogs, null, 2));
       await api.finishPhase(
         Number(activeLog.id),
         new Date().toISOString(),
@@ -456,7 +462,9 @@ const MachineOperatorView: React.FC = () => {
       setCurrentStagePhaseId(null);
 
       // ξαναφορτώνουμε το sheet για να δούμε updated logs / quantities
-      await handleScanSuccess(sheet.qrValue);
+      const updated = await api.getProductionSheetByQr(sheet.qrValue);
+      setSheet(updated);
+
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -562,6 +570,28 @@ const MachineOperatorView: React.FC = () => {
         </div>
       </>
     );
+
+  if (viewState === "details") {
+    if (!sheet || !sheet.product || !Array.isArray(sheet.product.phases)) {
+      console.error("❌ Invalid sheet structure:", sheet);
+      return <div>Error: Invalid sheet structure</div>;
+    }
+  }
+
+  if (viewState === "details" && !sheet) {
+    return <div style={{ padding: 20 }}>DEBUG: sheet is NULL</div>;
+  }
+
+  if (viewState === "details" && sheet && (!sheet.product || !Array.isArray(sheet.product.phases))) {
+    return (
+      <div style={{ padding: 20 }}>
+        DEBUG: Invalid sheet structure<br/>
+        {JSON.stringify(sheet, null, 2)}
+      </div>
+    );
+  }
+
+
 
   if (viewState === "details" && sheet)
     return (

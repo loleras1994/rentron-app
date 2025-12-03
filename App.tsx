@@ -11,12 +11,27 @@ import { useTranslation } from './hooks/useTranslation'; // Import useTranslatio
 import BatchCreateView from './components/BatchCreateView';
 import TransactionView from './components/TransactionView';
 import OrderKeeperView from './components/OrderKeeperView';
-import MachineOperatorView from './components/oldMachineOperatorView';
+import MachineOperatorView from './components/MachineOperatorView';
 import InfraOperatorView from './components/InfraOperatorView';
 import PhaseManagerView from './components/PhaseManagerView';
 import PdfOrderImportView from './components/PdfOrderImportView';
 import LivePhasesView from './components/LivePhasesView';
 import { LanguageProvider } from './context/LanguageContext'; // Import LanguageProvider
+
+type View =
+  | 'operator'
+  | 'search'
+  | 'manager'
+  | 'batch-create'
+  | 'transactions'
+  | 'orders'
+  | 'scan-product-sheet'
+  | 'daily-logs'
+  | 'phase-manager'
+  | 'pdf-import'
+  | 'live-phases'
+  | 'history';
+
 
 const AuthenticatedApp: React.FC = () => {
   const { user, logout } = useAuth();
