@@ -16,7 +16,8 @@ import InfraOperatorView from './components/InfraOperatorView';
 import PhaseManagerView from './components/PhaseManagerView';
 import PdfOrderImportView from './components/PdfOrderImportView';
 import LivePhasesView from './components/LivePhasesView';
-import { LanguageProvider } from './context/LanguageContext'; // Import LanguageProvider
+import { LanguageProvider } from './context/LanguageContext'; 
+import AccountSettingsView from './components/AccountSettingsView';
 
 type View =
   | 'operator'
@@ -30,7 +31,8 @@ type View =
   | 'phase-manager'
   | 'pdf-import'
   | 'live-phases'
-  | 'history';
+  | 'history'
+  | "account";
 
 
 const AuthenticatedApp: React.FC = () => {
@@ -79,7 +81,9 @@ const AuthenticatedApp: React.FC = () => {
       case "pdf-import":
         return <PdfOrderImportView />;
       case "live-phases":
-        return <LivePhasesView />;        
+        return <LivePhasesView />; 
+      case "account":
+        return <AccountSettingsView />;         
       default:
         // A user's default view might not be in the nav, but still valid.
         // If not, redirect to first allowed tab.

@@ -42,6 +42,7 @@ const Header: React.FC<HeaderProps> = ({
     { id: 'search', label: t('tabs.search'), icon: <SearchIcon className="w-5 h-5 mr-2" /> },
     { id: 'transactions', label: t('tabs.transactions'), icon: <DocumentTextIcon className="w-5 h-5 mr-2" /> },
     { id: 'manager', label: t('tabs.manager'), icon: <UserGroupIcon className="w-5 h-5 mr-2" /> },
+    { id: 'account', label: t('tabs.account'), icon: <CogIcon className="w-5 h-5 mr-2" /> },
   ];
 
   // Show only allowed tabs

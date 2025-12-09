@@ -12,12 +12,12 @@ import type {
   PhaseLog,
   ProductionSheetForOperator,
 } from "../src/types";
-
+import { mapPhaseLog } from "../src/mapPhaseLog";
 /* ============================================================
    Real backend client – Express + SQLite
    ============================================================ */
 
-const API_URL = "https://rentron-app.onrender.com";
+const API_URL = "https://api.rentron.gr";
 
 
 /* ---------------- Generic helper ---------------- */
@@ -396,7 +396,7 @@ export const startPhase = async (data: {
   });
 
 export const finishPhase = async (
-  id: number,
+  id: string,
   endTime: string,
   quantityDone: number,
   productionTime?: number
@@ -406,8 +406,10 @@ export const finishPhase = async (
     body: JSON.stringify({ endTime, quantityDone, productionTime }),
   });
 
-export const getDailyLogs = async (date?: string): Promise<PhaseLog[]> =>
-  apiFetch<PhaseLog[]>("/phase_logs");
+export const getDailyLogs = async (): Promise<PhaseLog[]> => {
+  const rows = await apiFetch<any[]>(`/phase_logs`);
+  return rows.map(mapPhaseLog);
+};
 
 export const createPhase = (id: string, name: string) =>
   apiFetch("/phases/create", {
@@ -455,6 +457,13 @@ export const parseOrderPdf = async (file: File): Promise<ParsedPdfMulti> => {
   }
 
   return res.json();
+};
+
+export const updateMyPassword = async (oldPassword: string, newPassword: string) => {
+  return apiFetch("/me/password", {
+    method: "PUT",
+    body: JSON.stringify({ oldPassword, newPassword }),
+  });
 };
 
 export async function getMaterial(id: string): Promise<Material | null> {
@@ -521,9 +530,32 @@ export async function consumeMaterial(
 
 // =============== LIVE PHASE DASHBOARD API ===============
 export async function getLiveStatus() {
-  // αν στο backend έβαλες route "/api/live/status", άλλαξέ το εδώ αντίστοιχα
-  return apiFetch<any>("/api/live/status");
+  const raw = await apiFetch<any>("/api/live/status");
+
+  return {
+    active: raw.active.map((a: any) => ({
+      username: a.username,
+      sheetId: a.sheet_id,
+      productionSheetNumber: a.production_sheet_number,
+      productId: a.product_id,
+      phaseId: a.phase_id,
+      plannedTime: a.planned_time,
+      status: a.status,
+      runningSeconds: a.running_seconds,
+      isOverrun: a.is_overrun,
+    })),
+
+    idle: raw.idle.map((u: any) => ({
+      username: u.username,
+      lastSheetId: u.last_sheet_id,
+      lastSheetNumber: u.last_sheet_number,
+      lastPhaseId: u.last_phase_id,
+      finishedAt: u.finished_at,
+      idleSeconds: u.idle_seconds,
+    })),
+  };
 }
+
 
 export async function startLivePhase(data: {
   username: string;

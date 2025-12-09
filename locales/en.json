@@ -37,7 +37,8 @@
     "daily-logs": "Daily Logs",
     "phase-manager": "Phase Manager",
     "pdfImport": "Import PDF Orders",
-    "live-phases": "Live Phases"
+    "live-phases": "Live Phases",
+    "account": "Account Settings"
   },
   "login": {
     "title": "Warehouse Tracker",

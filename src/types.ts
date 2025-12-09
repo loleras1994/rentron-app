@@ -129,7 +129,8 @@ export type AllowedView =
   | "phase-manager"
   | "history"
   | "pdf-import"
-  | "live-phases";
+  | "live-phases"
+  | "account";
 
 export interface User {
   id: number;

@@ -19,11 +19,28 @@ const LivePhasesView = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const formatLocal = (isoString) => {
-    if (!isoString) return "N/A";
-    return new Date(isoString + "Z").toLocaleString();
-    // Adding "Z" forces browser to treat it as UTC → converted to local
+  const parsePgTimestamp = (ts) => {
+    if (!ts) return null;
+
+    // normalize Postgres formats:
+    // "2025-12-04 14:03:31.307+00"
+    // "2025-12-04T14:03:31.307"
+    let clean = ts.replace(" ", "T");
+
+    // add Z only if missing any timezone
+    if (!clean.endsWith("Z") && !clean.includes("+") && !clean.includes("-")) {
+      clean += "Z";
+    }
+
+    const d = new Date(clean);
+    return isNaN(d.getTime()) ? null : d;
   };
+
+  const formatLocal = (ts) => {
+    const d = parsePgTimestamp(ts);
+    return d ? d.toLocaleString() : "Invalid Date";
+  };
+
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

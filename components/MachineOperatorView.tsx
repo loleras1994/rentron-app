@@ -11,9 +11,42 @@ import Scanner from "./Scanner";
 import { useAuth } from "../hooks/useAuth";
 import { useWarehouse } from "../hooks/useWarehouse";
 import ConfirmModal from "../components/ConfirmModal";
+import { mapPhaseLog } from "../src/mapPhaseLog";
 
 type StageType = "find" | "setup" | "production";
 
+/* ---------------------------------------------------------
+   HELPERS
+--------------------------------------------------------- */
+
+const safeInt = (v: any, fallback = 0): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.floor(n) : fallback;
+};
+
+
+// phases in product snapshot may use id / phase_id / phaseId
+const normalizeProductPhases = (rawProduct: any | null | undefined) => {
+  if (!rawProduct) return { ...rawProduct, phases: [] as any[] };
+
+  const phasesArr = Array.isArray(rawProduct.phases)
+    ? rawProduct.phases
+    : [];
+
+  const normalizedPhases = phasesArr.map((p: any) => ({
+    ...p,
+    phaseId: String(p.phaseId ?? p.phase_id ?? p.id),
+  }));
+
+  return {
+    ...rawProduct,
+    phases: normalizedPhases,
+  };
+};
+
+/* ---------------------------------------------------------
+   SAFELY RESOLVE MATERIALS
+--------------------------------------------------------- */
 const resolveMaterialsForPhase = (
   sheet: ProductionSheetForOperator | null,
   materials: Material[]
@@ -28,9 +61,8 @@ const resolveMaterialsForPhase = (
 
   const pm = Array.isArray(p?.materials) ? p.materials : [];
   for (const m of pm as any[]) {
-    if (typeof m === "string") {
-      candidates.add(m.toLowerCase());
-    } else if (m) {
+    if (typeof m === "string") candidates.add(m.toLowerCase());
+    else if (m) {
       if (m.materialId) candidates.add(String(m.materialId).toLowerCase());
       if (m.materialCode) candidates.add(String(m.materialCode).toLowerCase());
       if (m.sku) candidates.add(String(m.sku).toLowerCase());
@@ -38,20 +70,20 @@ const resolveMaterialsForPhase = (
     }
   }
 
-  return (
-    materials.filter(
-      (wm) =>
-        wm.materialCode &&
-        candidates.has(String(wm.materialCode).toLowerCase())
-    ) || []
+  return materials.filter(
+    (wm) =>
+      wm.materialCode &&
+      candidates.has(String(wm.materialCode).toLowerCase())
   );
 };
 
+/* ---------------------------------------------------------
+   MAIN COMPONENT
+--------------------------------------------------------- */
 const MachineOperatorView: React.FC = () => {
-  console.log("📌 MachineOperatorView rendered");
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { materials, loading: warehouseLoading } = useWarehouse();
+  const { materials } = useWarehouse();
 
   const [materialInfo, setMaterialInfo] = useState<Material[] | null>(null);
   const [viewState, setViewState] =
@@ -63,7 +95,6 @@ const MachineOperatorView: React.FC = () => {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [activeLog, setActiveLog] = useState<PhaseLog | null>(null);
 
-  // 🔹 ΕΝΙΑΙΟ STAGE TIMER (για find/setup/production)
   const [currentStage, setCurrentStage] = useState<StageType | null>(null);
   const [currentStagePhaseId, setCurrentStagePhaseId] = useState<string | null>(
     null
@@ -71,7 +102,6 @@ const MachineOperatorView: React.FC = () => {
   const stageTimerRef = useRef<number | null>(null);
   const [stageSeconds, setStageSeconds] = useState(0);
 
-  // Μαζεμένοι χρόνοι για κάθε phase, που θα σταλούν στο επόμενο startProduction
   const [pendingStageTimes, setPendingStageTimes] = useState<
     Record<string, { find: number; setup: number }>
   >({});
@@ -114,29 +144,61 @@ const MachineOperatorView: React.FC = () => {
     }
   };
 
+  // Clear timer on unmount, just in case
+  useEffect(() => {
+    return () => {
+      clearStageTimer();
+    };
+  }, []);
+
+  /* ---------------------------------------------------------
+     LOAD PHASE DEFINITIONS
+  --------------------------------------------------------- */
   useEffect(() => {
     api.getPhases().then(setPhases).catch(console.error);
   }, []);
 
+  /* ---------------------------------------------------------
+     SAFE NORMALIZER FOR SHEET
+  --------------------------------------------------------- */
+  const normalizeSheet = (raw: any): ProductionSheetForOperator => {
+    const product = normalizeProductPhases(raw.product || null);
+
+    const rawLogs = Array.isArray(raw.phaseLogs)
+      ? raw.phaseLogs
+      : raw.phase_logs || [];
+
+    const phaseLogs = rawLogs.map(mapPhaseLog);
+
+    return {
+      ...raw,
+      phaseLogs,
+      product,
+    };
+  };
+
+  /* ---------------------------------------------------------
+     SCAN SUCCESS
+  --------------------------------------------------------- */
   const handleScanSuccess = async (decodedText: string) => {
     setIsLoading(true);
     setError(null);
-    try {
-      const data = await api.getProductionSheetByQr(decodedText);
-      console.log("📌 Sheet received:", data);
-      setSheet(data);
-      setError("DEBUG: scanned!");
 
-      // Check if the sheet contains phase 2 or 30 (find material)
-      const hasPhase2or30 = data.product?.phases?.some((p) =>
-        ["2", "30"].includes(p.phaseId)
+    try {
+      const raw = await api.getProductionSheetByQr(decodedText);
+      const data = normalizeSheet(raw);
+
+      setSheet(data);
+
+      const hasPhase2or30 = data.product?.phases?.some((p: any) =>
+        ["2", "30"].includes(String(p.phaseId))
       );
 
-      const phase2or30Done = data.phaseLogs?.some(
+      const phase2or30Done = data.phaseLogs.some(
         (l) =>
-          ["2", "30"].includes(l.phaseId) &&
+          ["2", "30"].includes(String(l.phaseId)) &&
           l.endTime &&
-          l.quantityDone >= data.quantity
+          (l.quantityDone || 0) >= data.quantity
       );
 
       if (hasPhase2or30 && !phase2or30Done) {
@@ -146,7 +208,6 @@ const MachineOperatorView: React.FC = () => {
         setMaterialInfo(null);
       }
 
-      // reset local stage state
       clearStageTimer();
       setCurrentStage(null);
       setCurrentStagePhaseId(null);
@@ -163,77 +224,105 @@ const MachineOperatorView: React.FC = () => {
     }
   };
 
-  /** Υπολογίζει πόσα κομμάτια ΜΠΟΡΟΥΜΕ ακόμα να τελειώσουμε σε ένα phase */
+  /* ---------------------------------------------------------
+     SAFE remaining calculation
+  --------------------------------------------------------- */
   const computeRemainingForPhase = (phaseId: string): number => {
     if (!sheet) return 0;
+
+    const phasesArr = sheet.product?.phases ?? [];
+    const logs = sheet.phaseLogs ?? [];
+
     const doneByPhase = new Map<string, number>();
-    sheet.product.phases.forEach((p) => doneByPhase.set(p.phaseId, 0));
-    sheet.phaseLogs.forEach((log) => {
+    phasesArr.forEach((p: any) =>
+      doneByPhase.set(String(p.phaseId), 0)
+    );
+
+    logs.forEach((log) => {
+      const key = String(log.phaseId);
       doneByPhase.set(
-        log.phaseId,
-        (doneByPhase.get(log.phaseId) || 0) + (log.quantityDone || 0)
+        key,
+        (doneByPhase.get(key) || 0) + (log.quantityDone || 0)
       );
     });
 
-    const idx = sheet.product.phases.findIndex((p) => p.phaseId === phaseId);
+    const idx = phasesArr.findIndex(
+      (p: any) => String(p.phaseId) === String(phaseId)
+    );
     if (idx < 0) return 0;
 
     const upstreamDone =
       idx === 0
         ? sheet.quantity
-        : doneByPhase.get(sheet.product.phases[idx - 1].phaseId) || 0;
-    const alreadyDoneHere = doneByPhase.get(phaseId) || 0;
+        : doneByPhase.get(String(phasesArr[idx - 1].phaseId)) || 0;
+
+    const alreadyDoneHere = doneByPhase.get(String(phaseId)) || 0;
     return Math.max(0, upstreamDone - alreadyDoneHere);
   };
 
-  // 🔥 Έλεγχος αν τρέχει ήδη άλλο production phase για αυτόν τον χρήστη
-  // (ώστε να ζητήσουμε partial/full finish πριν ξεκινήσει άλλο)
+  /* ---------------------------------------------------------
+     SAFE STATUS MAP
+  --------------------------------------------------------- */
+  const phaseStatuses = useMemo(() => {
+    if (!sheet) return new Map();
+
+    const phasesArr = sheet.product?.phases ?? [];
+    const logs = sheet.phaseLogs ?? [];
+
+    const statuses = new Map<
+      string,
+      { done: number; total: number; inProgress: boolean }
+    >();
+
+    phasesArr.forEach((p: any) =>
+      statuses.set(String(p.phaseId), {
+        done: 0,
+        total: sheet.quantity,
+        inProgress: false,
+      })
+    );
+
+    logs.forEach((log) => {
+      const key = String(log.phaseId);
+      const st = statuses.get(key);
+      if (!st) return;
+      st.done += log.quantityDone || 0;
+      if (!log.endTime) st.inProgress = true;
+    });
+
+    return statuses;
+  }, [sheet]);
+
+  /* ---------------------------------------------------------
+     FINISH PREVIOUS PHASE DIALOG
+  --------------------------------------------------------- */
   const ensurePreviousPhaseClosed = async () => {
     if (!activeLog) return true;
 
-    // Step 1 — Full finish ή επόμενο βήμα
-    const firstChoice = await openModal(
+    const first = await openModal(
       "Previous Phase Still Running",
-      "⚠ You are already working on another phase.\n\n" +
-        "Choose what to do with the previous phase:",
+      "Choose what to do with the previous phase:",
       [
-        {
-          label: "Finish FULLY",
-          type: "primary",
-          onClick: () => closeModal(true),
-        },
-        {
-          label: "Next Options…",
-          type: "secondary",
-          onClick: () => closeModal(false),
-        },
+        { label: "Finish FULLY", type: "primary", onClick: () => closeModal(true) },
+        { label: "Next Options…", type: "secondary", onClick: () => closeModal(false) },
       ]
     );
 
-    if (firstChoice) {
+    if (first) {
       await finishProductionStage(false);
       return true;
     }
 
-    // Step 2 — Partial ή Abort
-    const secondChoice = await openModal(
+    const second = await openModal(
       "Finish Partially or Abort",
       "Choose how to handle the previous phase:",
       [
-        {
-          label: "Finish PARTIALLY",
-          type: "primary",
-          onClick: () => closeModal(true),
-        },
-        {
-          label: "Abort",
-          type: "danger",
-          onClick: () => closeModal(false),
-        },
+        { label: "Finish PARTIALLY", type: "primary", onClick: () => closeModal(true) },
+        { label: "Abort", type: "danger", onClick: () => closeModal(false) },
       ]
     );
 
-    if (secondChoice) {
+    if (second) {
       await finishProductionStage(true);
       return true;
     }
@@ -241,37 +330,29 @@ const MachineOperatorView: React.FC = () => {
     return false;
   };
 
-  /* === START STAGE (find/setup) === */
+  /* ---------------------------------------------------------
+     START SIMPLE STAGES (find/setup)
+  --------------------------------------------------------- */
   const startSimpleStage = async (phaseId: string, stage: StageType) => {
     if (stage === "production") return;
-
-    if (currentStage) {
-      alert(
-        t("machineOperator.finishCurrentStage") ||
-          "Finish the current stage first."
-      );
-      return;
-    }
+    if (currentStage) return alert("Finish current stage first.");
 
     const ok = await ensurePreviousPhaseClosed();
     if (!ok) return;
+
     if (!sheet || !user) return;
 
     const remainingForPhase = computeRemainingForPhase(phaseId);
-    if (remainingForPhase <= 0) {
-      alert(
-        t("common.nothingToStart") || "Nothing to start for this phase."
-      );
-      return;
-    }
+    if (remainingForPhase <= 0) return alert("Nothing to start.");
 
     setCurrentStage(stage);
     setCurrentStagePhaseId(phaseId);
     setStageSeconds(0);
 
-    // LIVE DASHBOARD για search/setup
     try {
-      const def = sheet.product?.phases?.find((p) => p.phaseId === phaseId);
+      const def: any = sheet.product?.phases?.find(
+        (p: any) => String(p.phaseId) === String(phaseId)
+      );
       if (def) {
         const plannedTime =
           (def.setupTime || 0) +
@@ -287,18 +368,20 @@ const MachineOperatorView: React.FC = () => {
         });
       }
     } catch (e) {
-      console.error("Live phase start failed:", e);
+      console.error("startSimpleStage live start error:", e);
     }
 
+    clearStageTimer();
     stageTimerRef.current = window.setInterval(() => {
       setStageSeconds((s) => s + 1);
     }, 1000);
   };
 
-  /* === FINISH STAGE (find/setup) === */
+  /* ---------------------------------------------------------
+     FINISH SIMPLE STAGES
+  --------------------------------------------------------- */
   const finishSimpleStage = async () => {
     if (!currentStage || !currentStagePhaseId) return;
-    if (currentStage === "production") return;
 
     clearStageTimer();
     const phaseId = currentStagePhaseId;
@@ -306,25 +389,19 @@ const MachineOperatorView: React.FC = () => {
 
     setPendingStageTimes((prev) => {
       const prevData = prev[phaseId] || { find: 0, setup: 0 };
-      if (currentStage === "find") {
-        return {
-          ...prev,
-          [phaseId]: { ...prevData, find: prevData.find + seconds },
-        };
-      } else {
-        return {
-          ...prev,
-          [phaseId]: { ...prevData, setup: prevData.setup + seconds },
-        };
-      }
+      return {
+        ...prev,
+        [phaseId]: {
+          find: prevData.find + (currentStage === "find" ? seconds : 0),
+          setup: prevData.setup + (currentStage === "setup" ? seconds : 0),
+        },
+      };
     });
 
     try {
-      if (user) {
-        await api.stopLivePhase(user.username);
-      }
+      if (user) await api.stopLivePhase(user.username);
     } catch (e) {
-      console.error("Live phase stop failed:", e);
+      console.error("finishSimpleStage stop live error:", e);
     }
 
     setStageSeconds(0);
@@ -332,30 +409,22 @@ const MachineOperatorView: React.FC = () => {
     setCurrentStagePhaseId(null);
   };
 
-  /* === START PRODUCTION === */
+  /* ---------------------------------------------------------
+     START PRODUCTION (FULLY PATCHED)
+  --------------------------------------------------------- */
   const startProductionStage = async (phaseId: string) => {
-    if (currentStage) {
-      alert(
-        t("machineOperator.finishCurrentStage") ||
-          "Finish the current stage first."
-      );
-      return;
-    }
+    if (currentStage) return alert("Finish current stage first.");
+
     const ok = await ensurePreviousPhaseClosed();
     if (!ok) return;
     if (!sheet || !user) return;
 
     const remainingForPhase = computeRemainingForPhase(phaseId);
-    if (remainingForPhase <= 0) {
-      alert(
-        t("common.nothingToStart") || "Nothing to start for this phase."
-      );
-      return;
-    }
+    if (remainingForPhase <= 0) return alert("Nothing to start.");
 
     const times = pendingStageTimes[phaseId] || { find: 0, setup: 0 };
-
     setIsLoading(true);
+
     try {
       const newLog = await api.startPhase({
         operatorUsername: user.username,
@@ -364,74 +433,78 @@ const MachineOperatorView: React.FC = () => {
         productId: sheet.productId,
         phaseId,
         startTime: new Date().toISOString(),
-        totalQuantity: sheet.quantity,
-        findMaterialTime: times.find,
-        setupTime: times.setup,
+        totalQuantity: remainingForPhase, // ⭐ key fix
+        findMaterialTime: times.find || 0,
+        setupTime: times.setup || 0,
       });
 
-      setActiveLog(newLog);
-      console.log("🔥 AFTER START — phaseLogs:", JSON.stringify(sheet.phaseLogs, null, 2));
+      const normalizedLog = mapPhaseLog(newLog);
+      setActiveLog(normalizedLog);
 
-
-      // Καθαρίζουμε τους pending times για αυτό το phase
       setPendingStageTimes((prev) => {
         const copy = { ...prev };
         delete copy[phaseId];
         return copy;
       });
 
-      // LIVE: production
+      // Start live
       try {
-        const def = sheet.product?.phases?.find((p) => p.phaseId === phaseId);
+        const def: any = sheet.product?.phases?.find(
+          (p: any) => String(p.phaseId) === String(phaseId)
+        );
         if (def) {
-          const plannedTime =
+          const planned =
             (def.productionTimePerPiece || 0) * remainingForPhase;
+
           await api.startLivePhase({
             username: user.username,
             sheetId: sheet.id,
             productId: sheet.productId,
             phaseId,
-            plannedTime,
+            plannedTime: planned,
             status: "production",
           });
         }
       } catch (e) {
-        console.error("Live phase start error:", e);
+        console.error("startProductionStage live start error:", e);
       }
 
-      // Timer για production
+      clearStageTimer();
       setCurrentStage("production");
       setCurrentStagePhaseId(phaseId);
       setStageSeconds(0);
+
       stageTimerRef.current = window.setInterval(() => {
         setStageSeconds((s) => s + 1);
       }, 1000);
-    } catch (err) {
-      setError((err as Error).message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  /* === FINISH PRODUCTION (partial/full) === */
+  /* ---------------------------------------------------------
+     FINISH PRODUCTION (FULL / PARTIAL)
+  --------------------------------------------------------- */
   const finishProductionStage = async (isPartial: boolean) => {
     if (!activeLog || !sheet) return;
-    const phaseId = activeLog.phaseId;
-    const remainingForPhase = computeRemainingForPhase(phaseId);
 
-    if (remainingForPhase <= 0 && activeLog) {
-      // allow finishing even if remaining = 0
-    } else if (remainingForPhase <= 0) {
-      alert(t("common.nothingToFinish"));
+    const phaseId = String(activeLog.phaseId);
+    const remaining = computeRemainingForPhase(phaseId);
+
+    if (remaining <= 0) {
+      alert("Nothing remaining to finish.");
       return;
     }
 
-    let quantityDone = remainingForPhase;
+    let quantityDone = remaining;
+
     if (isPartial) {
-      const qtyStr = prompt(t("machineOperator.enterPartialQty"));
-      const qty = parseInt(qtyStr || "0", 10);
-      if (qty <= 0 || qty > remainingForPhase) {
-        alert(t("common.invalidQuantity") || "Invalid quantity");
+      const qtyStr = prompt(`Enter quantity (1–${remaining}):`);
+      if (qtyStr === null) return; // user cancelled
+
+      const qty = parseInt(qtyStr.trim(), 10);
+      if (!Number.isFinite(qty) || qty <= 0 || qty > remaining) {
+        alert("Invalid quantity.");
         return;
       }
       quantityDone = qty;
@@ -442,18 +515,17 @@ const MachineOperatorView: React.FC = () => {
 
     setIsLoading(true);
     try {
-      console.log("🔥 BEFORE FINISH — phaseLogs:", JSON.stringify(sheet.phaseLogs, null, 2));
       await api.finishPhase(
-        Number(activeLog.id),
+        activeLog.id, // UUID string
         new Date().toISOString(),
         quantityDone,
         productionSeconds
       );
 
       if (user) {
-        api
-          .stopLivePhase(user.username)
-          .catch((e) => console.error("Live phase stop failed:", e));
+        api.stopLivePhase(user.username).catch((e) =>
+          console.error("finishProductionStage stop live error:", e)
+        );
       }
 
       setActiveLog(null);
@@ -461,17 +533,18 @@ const MachineOperatorView: React.FC = () => {
       setCurrentStage(null);
       setCurrentStagePhaseId(null);
 
-      // ξαναφορτώνουμε το sheet για να δούμε updated logs / quantities
-      const updated = await api.getProductionSheetByQr(sheet.qrValue);
+      // Reload sheet with fresh, normalized logs
+      const updatedRaw = await api.getProductionSheetByQr(sheet.qrValue);
+      const updated = normalizeSheet(updatedRaw);
       setSheet(updated);
-
-    } catch (err) {
-      setError((err as Error).message);
     } finally {
       setIsLoading(false);
     }
   };
 
+  /* ---------------------------------------------------------
+     RESET
+  --------------------------------------------------------- */
   const resetView = () => {
     setSheet(null);
     setError(null);
@@ -484,49 +557,9 @@ const MachineOperatorView: React.FC = () => {
     setViewState("idle");
   };
 
-  /* === STATUS === */
-  const phaseStatuses = useMemo(() => {
-    if (!sheet) return new Map();
-    const statuses = new Map<
-      string,
-      { done: number; total: number; inProgress: boolean }
-    >();
-    sheet.product.phases.forEach((p) =>
-      statuses.set(p.phaseId, {
-        done: 0,
-        total: sheet.quantity,
-        inProgress: false,
-      })
-    );
-    sheet.phaseLogs.forEach((log) => {
-      const status = statuses.get(log.phaseId)!;
-      status.done += log.quantityDone;
-      if (!log.endTime) status.inProgress = true;
-    });
-    return statuses;
-  }, [sheet]);
-
-  useEffect(() => {
-    if (!sheet) return setMaterialInfo(null);
-
-    const phaseIdsToCheck = ["2", "30"];
-    const hasRelevantPhase = sheet.product?.phases?.some((p) =>
-      phaseIdsToCheck.includes(p.phaseId)
-    );
-    const isDone = sheet.phaseLogs?.some(
-      (l) =>
-        phaseIdsToCheck.includes(l.phaseId) &&
-        l.endTime &&
-        l.quantityDone >= sheet.quantity
-    );
-
-    setMaterialInfo(
-      hasRelevantPhase && !isDone
-        ? resolveMaterialsForPhase(sheet, materials)
-        : null
-    );
-  }, [sheet, materials]);
-
+  /* ---------------------------------------------------------
+     LOADING
+  --------------------------------------------------------- */
   if (isLoading)
     return (
       <>
@@ -541,6 +574,9 @@ const MachineOperatorView: React.FC = () => {
       </>
     );
 
+  /* ---------------------------------------------------------
+     SCANNING
+  --------------------------------------------------------- */
   if (viewState === "scanning")
     return (
       <>
@@ -558,10 +594,11 @@ const MachineOperatorView: React.FC = () => {
           />
           <button
             onClick={() => setViewState("idle")}
-            className="mt-4 w-full bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
+            className="mt-4 w-full bg-gray-500 text-white py-2 rounded-md"
           >
             {t("common.cancel")}
           </button>
+
           {error && (
             <p className="mt-4 text-red-500 bg-red-100 p-3 rounded-md">
               {error}
@@ -571,29 +608,28 @@ const MachineOperatorView: React.FC = () => {
       </>
     );
 
+  /* ---------------------------------------------------------
+     DETAILS GUARDS
+  --------------------------------------------------------- */
   if (viewState === "details") {
-    if (!sheet || !sheet.product || !Array.isArray(sheet.product.phases)) {
-      console.error("❌ Invalid sheet structure:", sheet);
-      return <div>Error: Invalid sheet structure</div>;
-    }
+    if (!sheet) return <div style={{ padding: 20 }}>DEBUG: no sheet</div>;
+
+    if (!sheet.product || !Array.isArray(sheet.product.phases))
+      return (
+        <div style={{ padding: 20 }}>
+          Invalid sheet structure
+          <br />
+          {JSON.stringify(sheet, null, 2)}
+        </div>
+      );
   }
 
-  if (viewState === "details" && !sheet) {
-    return <div style={{ padding: 20 }}>DEBUG: sheet is NULL</div>;
-  }
+  /* ---------------------------------------------------------
+     DETAILS VIEW
+  --------------------------------------------------------- */
+  if (viewState === "details" && sheet) {
+    const logs = sheet.phaseLogs ?? [];
 
-  if (viewState === "details" && sheet && (!sheet.product || !Array.isArray(sheet.product.phases))) {
-    return (
-      <div style={{ padding: 20 }}>
-        DEBUG: Invalid sheet structure<br/>
-        {JSON.stringify(sheet, null, 2)}
-      </div>
-    );
-  }
-
-
-
-  if (viewState === "details" && sheet)
     return (
       <>
         <ConfirmModal
@@ -605,10 +641,11 @@ const MachineOperatorView: React.FC = () => {
         />
 
         <div className="bg-white p-6 rounded-lg shadow-lg max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
+          <h2 className="text-2xl font-bold mb-4">
             {t("machineOperator.sheetDetails")}
           </h2>
 
+          {/* SHEET INFO */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-md">
             <p>
               <strong>{t("machineOperator.orderNum")}:</strong>{" "}
@@ -627,19 +664,16 @@ const MachineOperatorView: React.FC = () => {
             </p>
           </div>
 
-          {/* 🔹 Material location and quantity info (only for phases 2 or 30) */}
+          {/* MATERIAL INFO */}
           {Array.isArray(materialInfo) && materialInfo.length > 0 && (
             <div className="p-4 my-4 border rounded-md bg-indigo-50">
-              <h4 className="font-semibold text-indigo-700 mb-2">
-                {t("machineOperator.materialInfo") || "Material Information"}
+              <h4 className="font-semibold mb-2">
+                {t("machineOperator.materialInfo")}
               </h4>
 
               <div className="space-y-3">
                 {materialInfo.map((mat) => (
-                  <div
-                    key={mat.id}
-                    className="p-3 bg-white rounded-md border"
-                  >
+                  <div key={mat.id} className="p-3 bg-white border rounded-md">
                     <p>
                       <strong>{t("common.material")}:</strong>{" "}
                       {mat.materialCode}
@@ -663,38 +697,45 @@ const MachineOperatorView: React.FC = () => {
             </div>
           )}
 
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">
+          {/* PHASES */}
+          <h3 className="text-xl font-semibold mb-2">
             {t("machineOperator.phases")}
           </h3>
 
           <div className="space-y-3">
-            {sheet.product.phases.map((phase, index) => {
-              const status = phaseStatuses.get(phase.phaseId)!;
+            {sheet.product.phases.map((phase: any, index: number) => {
+              const phaseId = String(phase.phaseId);
+
+              const status = phaseStatuses.get(phaseId) || {
+                done: 0,
+                total: sheet.quantity,
+                inProgress: false,
+              };
+
               const isUnlocked =
                 index === 0 ||
-                phaseStatuses.get(sheet.product.phases[index - 1].phaseId)!
-                  .done > 0;
-              const canStartQty = Math.max(
-                0,
-                (index === 0
+                (phaseStatuses.get(
+                  String(sheet.product.phases[index - 1].phaseId)
+                )?.done || 0) > 0;
+
+              const prevDone =
+                index === 0
                   ? sheet.quantity
                   : phaseStatuses.get(
-                      sheet.product.phases[index - 1].phaseId
-                    )!.done) - status.done
-              );
-              const hasSetup = !!(
-                sheet.product.phases.find(
-                  (p) => p.phaseId === phase.phaseId
-                )?.setupTime &&
-                sheet.product.phases.find(
-                  (p) => p.phaseId === phase.phaseId
-                )!.setupTime! > 0
-              );
+                      String(sheet.product.phases[index - 1].phaseId)
+                    )?.done || 0;
+
+              const canStartQty = Math.max(0, prevDone - status.done);
+
+              const hasSetup =
+                (sheet.product.phases.find(
+                  (p: any) => String(p.phaseId) === phaseId
+                )?.setupTime || 0) > 0;
 
               const isPhaseLocked = canStartQty <= 0;
 
               const isMyCurrentPhase =
-                currentStagePhaseId === phase.phaseId && currentStage !== null;
+                currentStagePhaseId === phaseId && currentStage !== null;
               const isRunningFind =
                 isMyCurrentPhase && currentStage === "find";
               const isRunningSetup =
@@ -704,48 +745,53 @@ const MachineOperatorView: React.FC = () => {
 
               return (
                 <div
-                  key={phase.phaseId}
+                  key={phaseId}
                   className="p-3 border rounded-md flex justify-between items-center bg-white"
                 >
+                  {/* LEFT SIDE */}
                   <div>
                     <p className="font-bold text-lg">
-                      {phases.find((p) => p.id === phase.phaseId)?.name ||
-                        `Phase ${phase.phaseId}`}
+                      {phases.find((p) => String(p.id) === phaseId)?.name ||
+                        `Phase ${phaseId}`}
                     </p>
+
                     <div className="text-sm text-gray-600 space-y-1">
                       <p>
-                        {t("machineOperator.status")}:{" "}
+                        {t("machineOperator.status")}{" "}
                         <span className="font-semibold">
                           {status.done} / {sheet.quantity}
                         </span>
                       </p>
 
-                      {sheet.phaseLogs.some(
-                        (l) => !l.endTime && l.phaseId === phase.phaseId
+                      {/* IN PROGRESS */}
+                      {logs.some(
+                        (l) => !l.endTime && String(l.phaseId) === phaseId
                       ) && (
                         <p className="text-yellow-600">
                           🟡 In progress by{" "}
-                          {sheet.phaseLogs
+                          {logs
                             .filter(
                               (l) =>
-                                !l.endTime && l.phaseId === phase.phaseId
+                                !l.endTime &&
+                                String(l.phaseId) === phaseId
                             )
                             .map((l) => l.operatorUsername)
                             .join(", ")}
                         </p>
                       )}
 
-                      {sheet.phaseLogs.some(
-                        (l) => l.endTime && l.phaseId === phase.phaseId
+                      {/* DONE */}
+                      {logs.some(
+                        (l) => l.endTime && String(l.phaseId) === phaseId
                       ) && (
                         <p className="text-green-700">
                           ✅ Done by{" "}
-                          {sheet.phaseLogs
+                          {logs
                             .filter(
                               (l) =>
                                 l.endTime &&
-                                l.phaseId === phase.phaseId &&
-                                l.quantityDone > 0
+                                String(l.phaseId) === phaseId &&
+                                (l.quantityDone || 0) > 0
                             )
                             .map(
                               (l) =>
@@ -757,26 +803,27 @@ const MachineOperatorView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    {/* Αν τρέχει FIND ή SETUP σε αυτό το phase → μόνο Finish */}
-                    {isRunningFind || isRunningSetup ? (
+                  {/* RIGHT SIDE */}
+                  <div className="flex flex-col items-end gap-2">
+                    {/* FIND / SETUP */}
+                    {(isRunningFind || isRunningSetup) && (
                       <div className="flex flex-col items-end gap-1">
                         <button
                           onClick={finishSimpleStage}
                           className="btn-secondary"
                         >
-                          {t("machineOperator.finish") || "Finish"}
+                          {t("machineOperator.finish")}
                         </button>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-500">
                           {currentStage === "find"
                             ? `Finding Material: ${stageSeconds}s`
-                            : `Setup Time: ${stageSeconds}s`}
+                            : `Setup: ${stageSeconds}s`}
                         </p>
                       </div>
-                    ) : null}
+                    )}
 
-                    {/* Αν τρέχει PRODUCTION σε αυτό το phase → Partial + Full Finish */}
-                    {isRunningProduction ? (
+                    {/* PRODUCTION */}
+                    {isRunningProduction && (
                       <div className="flex flex-col items-end gap-1">
                         <div className="flex gap-2">
                           <button
@@ -792,31 +839,31 @@ const MachineOperatorView: React.FC = () => {
                             {t("machineOperator.finishFull")}
                           </button>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {`Production Time: ${stageSeconds}s`}
+
+                        <p className="text-xs text-gray-500">
+                          Production: {stageSeconds}s
                         </p>
                       </div>
-                    ) : null}
+                    )}
 
-                    {/* Αν δεν τρέχει κανένα stage αυτή τη στιγμή */}
+                    {/* START BUTTONS */}
                     {!currentStage && !isPhaseLocked && isUnlocked && (
-                      <div className="flex flex-col gap-2 items-end">
-                        {(phase.phaseId === "2" ||
-                          phase.phaseId === "30") && (
+                      <div className="flex flex-col items-end gap-2">
+                        {(phaseId === "2" || phaseId === "30") && (
                           <button
                             onClick={() =>
-                              startSimpleStage(phase.phaseId, "find")
+                              startSimpleStage(phaseId, "find")
                             }
                             className="btn-secondary"
                           >
-                            Start Find Material
+                            Find Material
                           </button>
                         )}
 
                         {hasSetup && (
                           <button
                             onClick={() =>
-                              startSimpleStage(phase.phaseId, "setup")
+                              startSimpleStage(phaseId, "setup")
                             }
                             className="btn-secondary"
                           >
@@ -825,9 +872,7 @@ const MachineOperatorView: React.FC = () => {
                         )}
 
                         <button
-                          onClick={() =>
-                            startProductionStage(phase.phaseId)
-                          }
+                          onClick={() => startProductionStage(phaseId)}
                           className="btn-primary"
                         >
                           Start Production
@@ -835,19 +880,17 @@ const MachineOperatorView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Αν τρέχει stage σε άλλο phase → μήνυμα ότι είναι απασχολημένος */}
+                    {/* BUSY */}
                     {currentStage && !isMyCurrentPhase && (
                       <p className="text-xs text-gray-400">
-                        {t("machineOperator.busyOnAnotherPhase") ||
-                          "You are currently working on another phase."}
+                        Busy on another phase…
                       </p>
                     )}
 
-                    {/* Αν phase είναι κλειδωμένο */}
+                    {/* DONE PHASE */}
                     {isPhaseLocked && (
                       <p className="text-xs text-gray-400">
-                        {t("machineOperator.phaseLocked") ||
-                          "Phase completed."}
+                        Phase complete
                       </p>
                     )}
                   </div>
@@ -856,6 +899,7 @@ const MachineOperatorView: React.FC = () => {
             })}
           </div>
 
+          {/* BOTTOM BUTTON */}
           <button
             onClick={resetView}
             className="mt-6 w-full text-indigo-600 hover:underline"
@@ -863,15 +907,31 @@ const MachineOperatorView: React.FC = () => {
             {t("operator.scanAnother")}
           </button>
 
+          {/* BUTTON STYLES */}
           <style>{`
-            .btn-primary { padding: 0.5rem 1rem; background-color: #4F46E5; color: white; border-radius: 0.375rem; font-weight: 500; }
-            .btn-secondary { padding: 0.5rem 1rem; background-color: #E5E7EB; color: #374151; border-radius: 0.375rem; font-weight: 500; }
+            .btn-primary{
+              padding:.5rem 1rem;
+              background:#4F46E5;
+              color:#fff;
+              border-radius:6px;
+              font-weight:500;
+            }
+            .btn-secondary{
+              padding:.5rem 1rem;
+              background:#E5E7EB;
+              color:#374151;
+              border-radius:6px;
+              font-weight:500;
+            }
           `}</style>
         </div>
       </>
     );
+  }
 
-  // Default / idle view
+  /* ---------------------------------------------------------
+     DEFAULT IDLE
+  --------------------------------------------------------- */
   return (
     <>
       <ConfirmModal
@@ -881,19 +941,18 @@ const MachineOperatorView: React.FC = () => {
         buttons={modalData.buttons}
         onClose={closeModal}
       />
+
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto text-center">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">
-          {t("machineOperator.title")}
-        </h2>
-        <p className="text-gray-600 mb-6">
-          {t("machineOperator.scanPrompt")}
-        </p>
+        <h2 className="text-2xl font-bold mb-4">{t("machineOperator.title")}</h2>
+        <p className="text-gray-600 mb-6">{t("machineOperator.scanPrompt")}</p>
+
         <button
           onClick={() => setViewState("scanning")}
-          className="w-full bg-indigo-600 text-white py-3 px-4 rounded-md hover:bg-indigo-700 font-semibold"
+          className="w-full bg-indigo-600 text-white py-3 rounded-md"
         >
           {t("machineOperator.startScan")}
         </button>
+
         {error && (
           <p className="mt-4 text-red-500 bg-red-100 p-3 rounded-md">
             {error}
