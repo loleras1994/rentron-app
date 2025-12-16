@@ -38,7 +38,8 @@
     "phase-manager": "Phase Manager",
     "pdfImport": "Import PDF Orders",
     "live-phases": "Live Phases",
-    "account": "Account Settings"
+    "account": "Account Settings",
+    "dead-time": "Dead Time"
   },
   "login": {
     "title": "Warehouse Tracker",

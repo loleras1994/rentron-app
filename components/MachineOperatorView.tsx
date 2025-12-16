@@ -190,6 +190,73 @@ const MachineOperatorView: React.FC = () => {
 
       setSheet(data);
 
+      const resumeActivePhase = async (freshSheet: ProductionSheetForOperator) => {
+        if (!user) return false;
+
+        // 1) Prefer live_phase_log (most reliable for "running_seconds")
+        try {
+          const status = await api.getLiveStatus();
+          const active = status.active.find(
+            (l: any) => l.username === user.username
+          );
+
+          if (active && String(active.sheet_id) !== String(freshSheet.id)) {
+            await openModal(
+              "Active job in progress",
+              "You already have a running job on another production sheet. Please return to it and finish it first.",
+              [
+                {
+                  label: "OK",
+                  type: "primary",
+                  onClick: () => closeModal(false),
+                },
+              ]
+            );
+
+            return true; // IMPORTANT: prevents UI reset
+          }
+
+          if (active?.phase_log_id) {
+            const log = freshSheet.phaseLogs.find((l) => String(l.id) === String(active.phase_log_id));
+            if (log) {
+              setActiveLog(log);
+              setCurrentStage(log.stage as StageType);
+              setCurrentStagePhaseId(String(log.phaseId));
+              setStageSeconds(active.running_seconds || 0);
+
+              clearStageTimer();
+              stageTimerRef.current = window.setInterval(() => setStageSeconds((s) => s + 1), 1000);
+              return true;
+            }
+          }
+        } catch (e) {
+          console.error("resumeActivePhase live status failed:", e);
+        }
+
+        // 2) Fallback: if live_phase_log is missing, resume from phase_logs directly
+        const openLog = freshSheet.phaseLogs.find(
+          (l) => l.operatorUsername === user.username && !l.endTime
+        );
+
+        if (!openLog) return false;
+
+        const startMs = new Date(openLog.startTime as any).getTime();
+        const nowMs = Date.now();
+        const secs = startMs ? Math.max(0, Math.floor((nowMs - startMs) / 1000)) : 0;
+
+        setActiveLog(openLog);
+        setCurrentStage(openLog.stage as StageType);
+        setCurrentStagePhaseId(String(openLog.phaseId));
+        setStageSeconds(secs);
+
+        clearStageTimer();
+        stageTimerRef.current = window.setInterval(() => setStageSeconds((s) => s + 1), 1000);
+
+        return true;
+      };
+
+
+
       const hasPhase2or30 = data.product?.phases?.some((p: any) =>
         ["2", "30"].includes(String(p.phaseId))
       );
@@ -208,12 +275,17 @@ const MachineOperatorView: React.FC = () => {
         setMaterialInfo(null);
       }
 
-      clearStageTimer();
-      setCurrentStage(null);
-      setCurrentStagePhaseId(null);
-      setStageSeconds(0);
-      setPendingStageTimes({});
-      setActiveLog(null);
+      const resumed = await resumeActivePhase(data);
+
+      if (!resumed) {
+        /*clearStageTimer();
+        setCurrentStage(null);
+        setCurrentStagePhaseId(null);
+        setStageSeconds(0);
+        setPendingStageTimes({});
+        setActiveLog(null);*/
+      }
+
 
       setViewState("details");
     } catch (err) {
@@ -299,82 +371,98 @@ const MachineOperatorView: React.FC = () => {
   const ensurePreviousPhaseClosed = async () => {
     if (!activeLog) return true;
 
-    const first = await openModal(
-      "Previous Phase Still Running",
-      "Choose what to do with the previous phase:",
+    const runningStage = (activeLog as any).stage as StageType | undefined;
+
+    const stageLabel =
+      runningStage === "find" ? "Find material" :
+      runningStage === "setup" ? "Setup" :
+      "Production";
+
+    const confirm = await openModal(
+      `${stageLabel} still running`,
+      `You already have an active ${stageLabel} log. Finish it first?`,
       [
-        { label: "Finish FULLY", type: "primary", onClick: () => closeModal(true) },
-        { label: "Next Options…", type: "secondary", onClick: () => closeModal(false) },
+        { label: "Finish it", type: "primary", onClick: () => closeModal(true) },
+        { label: "Cancel", type: "secondary", onClick: () => closeModal(false) },
       ]
     );
 
-    if (first) {
-      await finishProductionStage(false);
-      return true;
-    }
+    if (!confirm) return false;
 
-    const second = await openModal(
-      "Finish Partially or Abort",
-      "Choose how to handle the previous phase:",
-      [
-        { label: "Finish PARTIALLY", type: "primary", onClick: () => closeModal(true) },
-        { label: "Abort", type: "danger", onClick: () => closeModal(false) },
-      ]
-    );
+    if (runningStage === "production") await finishProductionStage(false);
+    else await finishSimpleStage();
 
-    if (second) {
-      await finishProductionStage(true);
-      return true;
-    }
-
-    return false;
+    return true;
   };
+
+
 
   /* ---------------------------------------------------------
      START SIMPLE STAGES (find/setup)
   --------------------------------------------------------- */
   const startSimpleStage = async (phaseId: string, stage: StageType) => {
     if (stage === "production") return;
-    if (currentStage) return alert("Finish current stage first.");
+    if (!sheet || !user?.username) return;
 
     const ok = await ensurePreviousPhaseClosed();
     if (!ok) return;
 
-    if (!sheet || !user) return;
-
     const remainingForPhase = computeRemainingForPhase(phaseId);
     if (remainingForPhase <= 0) return alert("Nothing to start.");
 
-    setCurrentStage(stage);
-    setCurrentStagePhaseId(phaseId);
-    setStageSeconds(0);
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const def: any = sheet.product?.phases?.find(
-        (p: any) => String(p.phaseId) === String(phaseId)
-      );
-      if (def) {
-        const plannedTime =
-          (def.setupTime || 0) +
-          (def.productionTimePerPiece || 0) * remainingForPhase;
+      // 1) create the log FIRST
+      const newLog = await api.startPhase({
+        operatorUsername: user.username,
+        orderNumber: sheet.orderNumber,
+        productionSheetNumber: sheet.productionSheetNumber,
+        productId: sheet.productId,
+        phaseId,
+        startTime: new Date().toISOString(),
+        // ⚠️ see note below about totalQuantity=0
+        totalQuantity: 0,
+        stage,
+      });
 
-        await api.startLivePhase({
-          username: user.username,
-          sheetId: sheet.id,
-          productId: sheet.productId,
-          phaseId,
-          plannedTime,
-          status: stage === "find" ? "search" : "setup",
-        });
-      }
+      setActiveLog(mapPhaseLog(newLog));
+
+      // 2) start live phase
+      const def: any = sheet.product?.phases?.find((p: any) => String(p.phaseId) === String(phaseId));
+      const plannedTime =
+        (def?.setupTime || 0) + (def?.productionTimePerPiece || 0) * remainingForPhase;
+
+      await api.startLivePhase({
+        username: user.username,
+        sheetId: sheet.id,
+        productId: sheet.productId,
+        phaseId,
+        plannedTime,
+        status: stage === "find" ? "search" : "setup",
+      });
+
+      // 3) only now start UI timer
+      setCurrentStage(stage);
+      setCurrentStagePhaseId(phaseId);
+      setStageSeconds(0);
+
+      clearStageTimer();
+      stageTimerRef.current = window.setInterval(() => {
+        setStageSeconds((s) => s + 1);
+      }, 1000);
     } catch (e) {
-      console.error("startSimpleStage live start error:", e);
+      console.error("startSimpleStage error:", e);
+      setError((e as Error).message);
+      // ✅ ensure UI isn't stuck
+      clearStageTimer();
+      setCurrentStage(null);
+      setCurrentStagePhaseId(null);
+      setStageSeconds(0);
+    } finally {
+      setIsLoading(false);
     }
-
-    clearStageTimer();
-    stageTimerRef.current = window.setInterval(() => {
-      setStageSeconds((s) => s + 1);
-    }, 1000);
   };
 
   /* ---------------------------------------------------------
@@ -384,37 +472,43 @@ const MachineOperatorView: React.FC = () => {
     if (!currentStage || !currentStagePhaseId) return;
 
     clearStageTimer();
+
     const phaseId = currentStagePhaseId;
     const seconds = stageSeconds;
 
-    setPendingStageTimes((prev) => {
-      const prevData = prev[phaseId] || { find: 0, setup: 0 };
-      return {
-        ...prev,
-        [phaseId]: {
-          find: prevData.find + (currentStage === "find" ? seconds : 0),
-          setup: prevData.setup + (currentStage === "setup" ? seconds : 0),
-        },
-      };
-    });
+    // snapshot the log id NOW (state may change async)
+    const logId = activeLog?.id;
 
+    setIsLoading(true);
     try {
-      if (user) await api.stopLivePhase(user.username);
-    } catch (e) {
-      console.error("finishSimpleStage stop live error:", e);
-    }
+      if (!logId) {
+        throw new Error("No activeLog to finish (startPhase probably failed).");
+      }
 
-    setStageSeconds(0);
-    setCurrentStage(null);
-    setCurrentStagePhaseId(null);
+      await api.finishPhase(logId, new Date().toISOString(), 0, seconds);
+
+      if (user?.username) {
+        await api.stopLivePhase(user.username);
+      }
+
+      setActiveLog(null);
+    } catch (e) {
+      console.error("finishSimpleStage error:", e);
+      setError((e as Error).message);
+    } finally {
+      // ✅ ALWAYS unlock UI
+      setStageSeconds(0);
+      setCurrentStage(null);
+      setCurrentStagePhaseId(null);
+      setIsLoading(false);
+    }
   };
+
 
   /* ---------------------------------------------------------
      START PRODUCTION (FULLY PATCHED)
   --------------------------------------------------------- */
   const startProductionStage = async (phaseId: string) => {
-    if (currentStage) return alert("Finish current stage first.");
-
     const ok = await ensurePreviousPhaseClosed();
     if (!ok) return;
     if (!sheet || !user) return;
@@ -424,6 +518,9 @@ const MachineOperatorView: React.FC = () => {
 
     const times = pendingStageTimes[phaseId] || { find: 0, setup: 0 };
     setIsLoading(true);
+
+    const phase = sheet.product.phases.find((p: any) => String(p.phaseId) === String(phaseId));
+    console.log("Phase position:", phase?.position); // Check if position exists
 
     try {
       const newLog = await api.startPhase({
@@ -436,6 +533,7 @@ const MachineOperatorView: React.FC = () => {
         totalQuantity: remainingForPhase, // ⭐ key fix
         findMaterialTime: times.find || 0,
         setupTime: times.setup || 0,
+        stage: 'production',
       });
 
       const normalizedLog = mapPhaseLog(newLog);

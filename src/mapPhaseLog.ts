@@ -11,6 +11,7 @@ export function mapPhaseLog(raw: any): PhaseLog {
     productionSheetNumber: raw.production_sheet_number,
     productId: raw.product_id,
     phaseId: String(raw.phase_id),
+    position: raw.position,
     startTime: raw.start_time,
     endTime: raw.end_time,
     quantityDone: raw.quantity_done,
@@ -18,5 +19,6 @@ export function mapPhaseLog(raw: any): PhaseLog {
     findMaterialTime: raw.find_material_time,
     setupTime: raw.setup_time,
     productionTime: raw.production_time,
+    stage: raw.stage,
   };
 }

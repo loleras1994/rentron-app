@@ -1,18 +1,17 @@
 import React, { useState } from "react";
 import { useTranslation } from "../hooks/useTranslation";
 import * as api from "../api/client";
-import type { PhaseLog } from "../src/types";
 
 /* ---------------------------------------------------------
-   UNIVERSAL TIMESTAMP PARSER (Final Correct Version)
+   UNIVERSAL TIMESTAMP PARSER
 --------------------------------------------------------- */
 function parseTimestamp(ts?: string | null): Date | null {
   if (!ts) return null;
-  return new Date(ts); // do not touch the timestamp
+  return new Date(ts);
 }
 
 /* ---------------------------------------------------------
-   Format local date/time for CSV
+   Format local date/time DD-MM-YY HH:mm
 --------------------------------------------------------- */
 function formatLocalDDMMYYHHmm(date: Date | null): string {
   if (!date) return "";
@@ -40,24 +39,20 @@ const InfraOperatorView: React.FC = () => {
   const [reportDate, setReportDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const allLogs: PhaseLog[] = await api.getDailyLogs();
+      const allLogs = await api.getDailyLogs(); // unified mapped logs
 
-      console.log("ALL LOGS FROM API (already normalized):", allLogs);
+      console.log("MAPPED LOGS:", allLogs);
 
-      // Filter by date
+      // Filter logs by date (using startTime)
       const logs = allLogs.filter((log) => {
         const start = parseTimestamp(log.startTime);
         if (!start) return false;
-
-        const logDate = start.toISOString().split("T")[0];
-        console.log("CHECK:", logDate, "==", reportDate, logDate === reportDate);
-        return logDate === reportDate;
+        return start.toISOString().split("T")[0] === reportDate;
       });
 
       if (logs.length === 0) {
@@ -66,48 +61,67 @@ const InfraOperatorView: React.FC = () => {
       }
 
       const headers = [
+        "Type",
         "Operator Username",
         "Order Number",
         "Production Sheet Number",
         "Product ID",
         "Phase ID",
+        "Position",
+        "Dead Code",
+        "Dead Description",
         "Start Time (local)",
         "End Time (local)",
-        "Total (setup+production) min",
-        "Setup Time (min)",
-        "Production Time (min)",
+        "Total Minutes",
+        "Setup Time",
+        "Production Time",
         "Quantity Done",
-        "Find Material Time (min)",
+        "Find Material Time",
       ];
 
       const csvRows = [headers.map(csvEscape).join(";")];
 
-      logs.forEach((log) => {
+      logs.forEach((log: any) => {
         const start = parseTimestamp(log.startTime);
         const end = parseTimestamp(log.endTime);
 
         let totalMinutes = "";
-        if (log.setupTime || log.productionTime) {
-          const totalSec = (log.setupTime ?? 0) + (log.productionTime ?? 0);
-          totalMinutes = (totalSec / 60).toFixed(1);
-        } else if (start && end) {
-          const diffMs = end.getTime() - start.getTime();
-          totalMinutes = (diffMs / 60000).toFixed(1);
+        if (start && end) {
+          totalMinutes = ((end.getTime() - start.getTime()) / 60000).toFixed(1);
         }
 
+        const isDead = log.type === "dead";
+
+        const operator =
+          log.operatorUsername ||
+          log.username ||
+          "";    
+
         const row = [
-          log.operatorUsername,
-          log.orderNumber,
-          log.productionSheetNumber,
-          log.productId,
-          log.phaseId,
+          isDead ? "Dead Time" : "Phase",
+          operator,
+          log.orderNumber ?? "",
+          log.productionSheetNumber ?? "",
+          log.productId ?? "",
+          isDead ? "" : log.phaseId ?? "",
+          isDead ? "" : log.position ?? "",
+          isDead ? log.deadCode ?? "" : "",
+          isDead ? log.deadDescription ?? "" : "",
           formatLocalDDMMYYHHmm(start),
           formatLocalDDMMYYHHmm(end),
           totalMinutes,
-          log.setupTime ? (log.setupTime / 60).toFixed(1) : "",
-          log.productionTime ? (log.productionTime / 60).toFixed(1) : "",
-          log.quantityDone ?? "",
-          log.findMaterialTime ? (log.findMaterialTime / 60).toFixed(1) : "",
+          isDead ? "" : log.setupTime ? (log.setupTime / 60).toFixed(1) : "",
+          isDead
+            ? ""
+            : log.productionTime
+            ? (log.productionTime / 60).toFixed(1)
+            : "",
+          isDead ? "" : log.quantityDone ?? "",
+          isDead
+            ? ""
+            : log.findMaterialTime
+            ? (log.findMaterialTime / 60).toFixed(1)
+            : "",
         ].map(csvEscape);
 
         csvRows.push(row.join(";"));
@@ -135,10 +149,6 @@ const InfraOperatorView: React.FC = () => {
     }
   };
 
-
-  /* ---------------------------------------------------------
-     RENDER
-  --------------------------------------------------------- */
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">

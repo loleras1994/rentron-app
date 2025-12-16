@@ -51,6 +51,7 @@ export interface ProductPhase {
   productionTimePerPiece: number;
   totalSetupTime?: number; 
   totalProductionTime?: number; 
+  position: string;
 }
 
 export interface Product {
@@ -86,6 +87,7 @@ export interface PhaseLog {
   productionSheetNumber: string;
   productId: string;
   phaseId: string;
+  position: string;
   startTime: string;
   endTime: string | null;
   quantityDone: number;
@@ -93,6 +95,7 @@ export interface PhaseLog {
   findMaterialTime?: number;  // in seconds
   setupTime?: number;         // 🆕 total setup duration (seconds)
   productionTime?: number;    // 🆕 total production duration (seconds)
+  stage: "find" | "setup" | "production";
 }
 
 export interface ProductionSheetForOperator extends ProductionSheet {
@@ -130,7 +133,8 @@ export type AllowedView =
   | "history"
   | "pdf-import"
   | "live-phases"
-  | "account";
+  | "account"
+  | "dead-time";
 
 export interface User {
   id: number;

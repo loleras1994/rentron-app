@@ -31,6 +31,7 @@ const PdfOrderImportView: React.FC = () => {
     setError(null);
     try {
       const result = await api.parseOrderPdf(file);
+      console.log("Parsed data set in state:", result);
       setParsed(result);
     } catch (e: any) {
       console.error(e);
@@ -47,7 +48,7 @@ const PdfOrderImportView: React.FC = () => {
     setError(null);
 
     try {
-      // Detect conflicts with existing sheets in same order
+      // Detect conflicts with existing sheets in the same order
       const sheetNumbers = parsed.sheets.map(s => s.sheetNumber);
       const existingSheets = await api.getSheetsByOrderId(parsed.orderNumber);
       const existingNums = existingSheets.map(s => s.productionSheetNumber);
@@ -57,31 +58,43 @@ const PdfOrderImportView: React.FC = () => {
         setError(`Sheet numbers already exist for this order: ${conflicts.join(", ")}`);
         setIsSaving(false);
         return;
-      }      
+      }
 
-      const sheetsToCreate = parsed.sheets.map((s) => ({
-        productionSheetNumber: s.sheetNumber,
-        productId: s.productDef.id,
-        quantity: s.quantity,
-        orderNumber: parsed.orderNumber,
-        productDef: s.productDef,
-      }));
+      // Map the parsed sheets to include the position for each phase
+      const sheetsToCreate = parsed.sheets.map((s) => {
+        console.log("Phases with position:", s.productDef.phases);
+        // Create a new phases array where each phase includes the position
+        const phasesWithPosition = s.productDef.phases.map((phase) => ({
+          ...phase,
+          position: phase.position, // Ensure position is included
+        }));
 
-      const newSheets = await api.createOrderAndSheets(
-        parsed.orderNumber,
-        sheetsToCreate
+        return {
+          productionSheetNumber: s.sheetNumber,
+          productId: s.productDef.id,
+          quantity: s.quantity,
+          orderNumber: parsed.orderNumber,
+          productDef: {
+            ...s.productDef,
+            phases: phasesWithPosition, // Include the phases with position here
+          },
+        };
+      });
+
+      // Create the sheets with the new phases data
+      const newSheets = await api.createOrderAndSheets(parsed.orderNumber, sheetsToCreate);
+
+      // Update the state with the generated sheets
+      setGeneratedSheets(
+        newSheets.map(s => ({
+          id: s.id,
+          orderNumber: parsed.orderNumber,
+          productId: s.productId,
+          productionSheetNumber: s.productionSheetNumber,
+          quantity: s.quantity,
+          qrValue: s.qrValue,
+        }))
       );
-
-    setGeneratedSheets(
-      newSheets.map(s => ({
-        id: s.id,
-        orderNumber: parsed.orderNumber,  
-        productId: s.productId,          
-        productionSheetNumber: s.productionSheetNumber,
-        quantity: s.quantity,
-        qrValue: s.qrValue,
-      }))
-    );
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Failed to create sheets");
@@ -89,6 +102,7 @@ const PdfOrderImportView: React.FC = () => {
       setIsSaving(false);
     }
   };
+
 
 const printSheets = (sheetsToPrint, mode) => {
   if (sheetsToPrint.length === 0) return;
@@ -224,12 +238,15 @@ const printSheets = (sheetsToPrint, mode) => {
                   <div className="mt-2">
                     <strong>Phases:</strong>
                     <ul className="list-disc ml-6">
-                      {s.productDef.phases.map((p, k) => (
-                        <li key={k}>
-                          phase {p.phaseId}: setup {p.setupTime} min, prod{" "}
-                          {p.productionTimePerPiece} min/piece
-                        </li>
-                      ))}
+                      {s.productDef.phases.map((p, k) => {
+                        console.log("Rendering phase data:", p);  // Log here to confirm position
+                        return (
+                          <li key={k}>
+                            phase {p.phaseId}: setup {p.setupTime} min, prod{" "}
+                            {p.productionTimePerPiece} min/piece, position: {p.position || "Not assigned"}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
 

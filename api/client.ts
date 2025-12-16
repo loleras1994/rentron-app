@@ -12,7 +12,8 @@ import type {
   PhaseLog,
   ProductionSheetForOperator,
 } from "../src/types";
-import { mapPhaseLog } from "../src/mapPhaseLog";
+/*import { mapPhaseLog } from "../src/mapPhaseLog";*/
+import { mapDailyLog } from "../src/mapDailyLog";
 /* ============================================================
    Real backend client – Express + SQLite
    ============================================================ */
@@ -66,6 +67,7 @@ const getTabsForRoles = (roles: UserRole[]): AllowedView[] => {
   }
   if (roles.includes("machineoperator")) {
     tabs.add("scan-product-sheet");
+    tabs.add("dead-time");
   }
   if (roles.includes("orderkeeper")) {
     tabs.add("orders");
@@ -389,6 +391,7 @@ export const startPhase = async (data: {
   totalQuantity: number;
   findMaterialTime?: number;
   setupTime?: number;
+  stage: string;
 }): Promise<PhaseLog> =>
   apiFetch<PhaseLog>("/phase_logs/start", {
     method: "POST",
@@ -399,16 +402,20 @@ export const finishPhase = async (
   id: string,
   endTime: string,
   quantityDone: number,
-  productionTime?: number
-): Promise<PhaseLog> =>
-  apiFetch<PhaseLog>(`/phase_logs/finish/${id}`, {
+  timeSeconds: number
+) =>
+  apiFetch(`/phase_logs/finish/${id}`, {
     method: "POST",
-    body: JSON.stringify({ endTime, quantityDone, productionTime }),
+    body: JSON.stringify({
+      endTime,
+      quantityDone,
+      timeSeconds,
+    }),
   });
 
-export const getDailyLogs = async (): Promise<PhaseLog[]> => {
-  const rows = await apiFetch<any[]>(`/phase_logs`);
-  return rows.map(mapPhaseLog);
+export const getDailyLogs = async () => {
+  const rows = await apiFetch<any[]>(`/daily_logs`);
+  return rows.map(mapDailyLog);
 };
 
 export const createPhase = (id: string, name: string) =>
@@ -435,6 +442,7 @@ export interface ParsedPdfMulti {
       materials: { materialId: string; quantityPerPiece: number }[];
       phases: {
         phaseId: string;
+        position: number;
         setupTime: number;
         productionTimePerPiece: number;
       }[];
@@ -456,8 +464,12 @@ export const parseOrderPdf = async (file: File): Promise<ParsedPdfMulti> => {
     throw new Error(`Failed to parse PDF: ${res.status}`);
   }
 
-  return res.json();
+  const parsedData = await res.json();
+  console.log("Parsed data from backend:", parsedData);  // Debugging log
+
+  return parsedData;
 };
+
 
 export const updateMyPassword = async (oldPassword: string, newPassword: string) => {
   return apiFetch("/me/password", {
@@ -527,13 +539,12 @@ export async function consumeMaterial(
   });
 }
 
-
 // =============== LIVE PHASE DASHBOARD API ===============
 export async function getLiveStatus() {
   const raw = await apiFetch<any>("/api/live/status");
 
   return {
-    active: raw.active.map((a: any) => ({
+    active: (raw.active || []).map((a: any) => ({
       username: a.username,
       sheetId: a.sheet_id,
       productionSheetNumber: a.production_sheet_number,
@@ -545,11 +556,33 @@ export async function getLiveStatus() {
       isOverrun: a.is_overrun,
     })),
 
-    idle: raw.idle.map((u: any) => ({
+    dead: (raw.dead || []).map((d: any) => ({
+      id: d.id,
+      username: d.username,
+      code: d.code,
+      description: d.description,
+      productId: d.product_id,
+      sheetId: d.sheet_id,
+      orderNumber: d.order_number,
+      productionSheetNumber: d.production_sheet_number,
+      runningSeconds: d.running_seconds,
+    })),
+
+    idle: (raw.idle || []).map((u: any) => ({
       username: u.username,
+      kind: u.kind,
+
       lastSheetId: u.last_sheet_id,
       lastSheetNumber: u.last_sheet_number,
       lastPhaseId: u.last_phase_id,
+
+      deadCode: u.dead_code,
+      deadDescription: u.dead_description,
+      deadProductId: u.dead_product_id,
+      deadSheetId: u.dead_sheet_id,
+      deadOrderNumber: u.dead_order_number,
+      deadProductionSheetNumber: u.dead_production_sheet_number,
+
       finishedAt: u.finished_at,
       idleSeconds: u.idle_seconds,
     })),
@@ -579,6 +612,27 @@ export async function stopLivePhase(username: string) {
   });
 }
 
+// =============== DEAD TIME API ===============
+export async function startDeadTime(data: {
+  username: string;
+  code: number;
+  description: string;
+  productId?: string;
+  sheetId?: string;
+  orderNumber?: string;
+  productionSheetNumber?: string;
+}) {
+  return apiFetch<any>("/deadtime/start", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function finishDeadTime(id: string) {
+  return apiFetch<any>(`/deadtime/finish/${id}`, {
+    method: "POST",
+  });
+}
 
 
 /* ============================================================
