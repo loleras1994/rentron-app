@@ -15,6 +15,7 @@ import { mapPhaseLog } from "../src/mapPhaseLog";
 
 type StageType = "find" | "setup" | "production";
 
+
 /* ---------------------------------------------------------
    HELPERS
 --------------------------------------------------------- */
@@ -85,6 +86,98 @@ const MachineOperatorView: React.FC = () => {
   const { user } = useAuth();
   const { materials } = useWarehouse();
 
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+
+    const resumeFromBackend = async () => {
+      console.log("🔁 RESUME: checking live status...");
+      try {
+        // 🔴 STEP 0: check DEAD TIME FIRST
+        const status = await api.getLiveStatus();
+        if (cancelled) return;
+
+        const myDead = (status.dead || []).find(
+          (d: any) => d.username === user.username
+        );
+
+        if (myDead) {
+          console.log("⛔ RESUME: dead time active, blocking machine view");
+          setActiveDeadTime(myDead);
+          return; // ⛔ STOP HERE — do NOT resume phases
+        }
+
+        setActiveDeadTime(null);
+
+        console.log("🔁 RESUME: checking active phase...");
+        const res = await api.getMyActivePhase();
+        console.log("🔁 RESUME: backend response =", res);
+        if (cancelled) return;
+        if (!res.active) return;
+
+        // 1️⃣ Load the correct sheet
+        setViewState("idle");
+        console.log(
+          "🔁 RESUME: loading sheet from QR",
+          res.active.qr_value
+        );
+        await handleScanSuccess(res.active.qr_value);
+        console.log("🔁 RESUME: sheet loaded, restoring active phase state");
+
+        if (cancelled) return;
+
+        // 2️⃣ Rehydrate ACTIVE LOG (THIS WAS MISSING)
+        const restoredLog: PhaseLog = {
+          id: res.active.log_id,
+          phaseId: String(res.active.phase_id),
+          stage: res.active.stage,
+          startTime: res.active.start_time,
+          endTime: null,
+          quantityDone: 0,
+          operatorUsername: user.username,
+        } as any;
+
+        console.log("🔁 RESUME: restoredLog =", restoredLog);
+        setActiveLog(restoredLog);
+
+        // 3️⃣ Restore running stage
+        setCurrentStage(res.active.stage);
+        setCurrentStagePhaseId(String(res.active.phase_id));
+
+        // 4️⃣ Resume timer
+        setStageSeconds(res.active.running_seconds ?? 0);
+        clearStageTimer();
+
+        console.log("🔁 RESUME: state set", {
+          activeLog: restoredLog,
+          currentStage: res.active.stage,
+          currentStagePhaseId: String(res.active.phase_id),
+        });
+
+        console.log(
+          "⏱️ RESUME: starting timer at",
+          res.active.running_seconds,
+          "seconds"
+        );
+
+        stageTimerRef.current = window.setInterval(() => {
+          setStageSeconds((s) => s + 1);
+        }, 1000);
+      } catch (e) {
+        console.error("Auto-resume failed:", e);
+      }
+    };
+
+    resumeFromBackend();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+
+
   const [materialInfo, setMaterialInfo] = useState<Material[] | null>(null);
   const [viewState, setViewState] =
     useState<"idle" | "scanning" | "details">("idle");
@@ -94,6 +187,8 @@ const MachineOperatorView: React.FC = () => {
   const [sheet, setSheet] = useState<ProductionSheetForOperator | null>(null);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [activeLog, setActiveLog] = useState<PhaseLog | null>(null);
+  
+  const [activeDeadTime, setActiveDeadTime] = useState<any | null>(null);
 
   const [currentStage, setCurrentStage] = useState<StageType | null>(null);
   const [currentStagePhaseId, setCurrentStagePhaseId] = useState<string | null>(
@@ -190,72 +285,16 @@ const MachineOperatorView: React.FC = () => {
 
       setSheet(data);
 
-      const resumeActivePhase = async (freshSheet: ProductionSheetForOperator) => {
-        if (!user) return false;
+      const res = await api.getMyActivePhase();
 
-        // 1) Prefer live_phase_log (most reliable for "running_seconds")
-        try {
-          const status = await api.getLiveStatus();
-          const active = status.active.find(
-            (l: any) => l.username === user.username
-          );
-
-          if (active && String(active.sheet_id) !== String(freshSheet.id)) {
-            await openModal(
-              "Active job in progress",
-              "You already have a running job on another production sheet. Please return to it and finish it first.",
-              [
-                {
-                  label: "OK",
-                  type: "primary",
-                  onClick: () => closeModal(false),
-                },
-              ]
-            );
-
-            return true; // IMPORTANT: prevents UI reset
-          }
-
-          if (active?.phase_log_id) {
-            const log = freshSheet.phaseLogs.find((l) => String(l.id) === String(active.phase_log_id));
-            if (log) {
-              setActiveLog(log);
-              setCurrentStage(log.stage as StageType);
-              setCurrentStagePhaseId(String(log.phaseId));
-              setStageSeconds(active.running_seconds || 0);
-
-              clearStageTimer();
-              stageTimerRef.current = window.setInterval(() => setStageSeconds((s) => s + 1), 1000);
-              return true;
-            }
-          }
-        } catch (e) {
-          console.error("resumeActivePhase live status failed:", e);
-        }
-
-        // 2) Fallback: if live_phase_log is missing, resume from phase_logs directly
-        const openLog = freshSheet.phaseLogs.find(
-          (l) => l.operatorUsername === user.username && !l.endTime
+      if (res.active && String(res.active.sheet_id) !== String(data.id)) {
+        await openModal(
+          "Active job in progress",
+          "You already have a running job on another production sheet.",
+          [{ label: "OK", type: "primary", onClick: () => closeModal(false) }]
         );
-
-        if (!openLog) return false;
-
-        const startMs = new Date(openLog.startTime as any).getTime();
-        const nowMs = Date.now();
-        const secs = startMs ? Math.max(0, Math.floor((nowMs - startMs) / 1000)) : 0;
-
-        setActiveLog(openLog);
-        setCurrentStage(openLog.stage as StageType);
-        setCurrentStagePhaseId(String(openLog.phaseId));
-        setStageSeconds(secs);
-
-        clearStageTimer();
-        stageTimerRef.current = window.setInterval(() => setStageSeconds((s) => s + 1), 1000);
-
-        return true;
-      };
-
-
+        return;
+      }
 
       const hasPhase2or30 = data.product?.phases?.some((p: any) =>
         ["2", "30"].includes(String(p.phaseId))
@@ -274,18 +313,6 @@ const MachineOperatorView: React.FC = () => {
       } else {
         setMaterialInfo(null);
       }
-
-      const resumed = await resumeActivePhase(data);
-
-      if (!resumed) {
-        /*clearStageTimer();
-        setCurrentStage(null);
-        setCurrentStagePhaseId(null);
-        setStageSeconds(0);
-        setPendingStageTimes({});
-        setActiveLog(null);*/
-      }
-
 
       setViewState("details");
     } catch (err) {
@@ -369,6 +396,16 @@ const MachineOperatorView: React.FC = () => {
      FINISH PREVIOUS PHASE DIALOG
   --------------------------------------------------------- */
   const ensurePreviousPhaseClosed = async () => {
+
+    if (activeDeadTime) {
+      await openModal(
+        "Dead time running",
+        "You have an active dead-time. Finish it before starting a phase.",
+        [{ label: "OK", type: "primary", onClick: () => closeModal(false) }]
+      );
+      return false;
+    }
+
     if (!activeLog) return true;
 
     const runningStage = (activeLog as any).stage as StageType | undefined;
@@ -705,6 +742,25 @@ const MachineOperatorView: React.FC = () => {
         </div>
       </>
     );
+
+
+  /* ---------------------------------------------------------
+    BLOCK IF DEAD TIME IS ACTIVE
+  --------------------------------------------------------- */
+  if (activeDeadTime) {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto">
+        <h2 className="text-2xl font-bold mb-4">Active Dead Time</h2>
+        <p className="mb-2">
+          <strong>Code:</strong> {activeDeadTime.code}
+        </p>
+        <p className="text-sm text-gray-600 mb-4">
+          You cannot start or resume production while a dead-time is active.
+          Finish it from the Dead Time tab.
+        </p>
+      </div>
+    );
+  }
 
   /* ---------------------------------------------------------
      DETAILS GUARDS

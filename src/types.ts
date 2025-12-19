@@ -43,6 +43,7 @@ export interface ProductMaterial {
   materialId: string;
   quantityPerPiece: number;
   totalQuantity?: number;
+  position?: string;
 }
 
 export interface ProductPhase {

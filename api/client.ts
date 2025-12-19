@@ -369,6 +369,24 @@ export const getProductionSheetByQr = async (
     `/production_sheet_by_qr/${encodeURIComponent(qr)}`
   );
 
+export const updateProductionSheet = async (
+  productionSheetNumber: string,
+  data: {
+    quantity: number;
+    productDef: {
+      id: string;
+      name: string;
+      materials: { materialId: string; quantityPerPiece: number }[];
+      phases: { phaseId: string; position: number; setupTime: number; productionTimePerPiece: number }[];
+    };
+  }
+) => {
+  return apiFetch(`/production_sheets/${productionSheetNumber}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
 export const getPhases = async (): Promise<Phase[]> =>
   apiFetch<Phase[]>("/phases");
 
@@ -477,6 +495,17 @@ export const updateMyPassword = async (oldPassword: string, newPassword: string)
     body: JSON.stringify({ oldPassword, newPassword }),
   });
 };
+
+
+export async function getMyActivePhase() {
+  const r = await fetch(`${API_URL}/api/phase-logs/my-active`, {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 
 export async function getMaterial(id: string): Promise<Material | null> {
   try {
