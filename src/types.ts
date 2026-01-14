@@ -36,7 +36,7 @@ export interface QrData {
 }
 
 /* ============================================================
-   PRODUCT / ORDER / PRODUCTION SHEET
+   PRODUCT / ORDER / PRODUCTION SHEET / FRAMES
    ============================================================ */
 
 export interface ProductMaterial {
@@ -109,6 +109,19 @@ export interface ProductForUI extends Product {
   quantity?: number; // <--- AMIBITO, only for UI calculations
 }
 
+
+export interface Frame {
+  frameId: number;
+  widthCm: number | null;
+  heightCm: number | null;
+  quality: FrameQuality | null;
+  position: FramePosition | null;
+  productIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 /* ============================================================
    USERS / AUTH
    ============================================================ */
@@ -119,7 +132,8 @@ export type UserRole =
   | "orderkeeper"
   | "machineoperator"
   | "infraoperator"
-  | "storekeeper";
+  | "storekeeper"
+  | "framekeeper";
 
 export type AllowedView =
   | "operator"
@@ -135,7 +149,8 @@ export type AllowedView =
   | "pdf-import"
   | "live-phases"
   | "account"
-  | "dead-time";
+  | "dead-time"
+  | "frames";
 
 export interface User {
   id: number;
@@ -146,6 +161,12 @@ export interface User {
   lastLogin: string | null;
   passwordHash?: string;
 }
+
+export interface FrameQrData {
+  type: "FRAME";
+  frameId: number;
+}
+
 
 /* ============================================================
    OTHER TYPES
@@ -161,14 +182,20 @@ export type ActionType =
 
 export type Language = "en" | "el";
 
+export type FramePosition = 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17;
+export type FrameQuality = 90 | 120;
+
 /* ============================================================
    TRANSACTIONS (DB format)
    ============================================================ */
-export interface Transaction {
-  id: number;
-  item_id: string;
-  delta: number;
+
+export type Transaction = {
+  id: string;
+  materialId: string;
+  materialName: string;
+  quantityChange: number;
   reason: string;
-  user: string;
-  created_at: string;
-}
+  user: string | null;
+  location: { area: string; position: string } | null;
+  timestamp: string;
+};

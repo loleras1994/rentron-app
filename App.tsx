@@ -19,6 +19,7 @@ import LivePhasesView from './components/LivePhasesView';
 import { LanguageProvider } from './context/LanguageContext'; 
 import AccountSettingsView from './components/AccountSettingsView';
 import DeadTimeView from "./components/DeadTimeView";
+import FramesView from './components/FramesView';
 
 
 type View =
@@ -35,8 +36,8 @@ type View =
   | 'live-phases'
   | 'history'
   | 'account'
-  | 'dead-time';
-
+  | 'dead-time'
+  | 'frames';
 
 const AuthenticatedApp: React.FC = () => {
   const { user, logout } = useAuth();
@@ -88,7 +89,9 @@ const AuthenticatedApp: React.FC = () => {
       case "account":
         return <AccountSettingsView />; 
       case "dead-time":
-        return <DeadTimeView />;         
+        return <DeadTimeView />;   
+      case "frames":
+        return <FramesView />;        
       default:
         // A user's default view might not be in the nav, but still valid.
         // If not, redirect to first allowed tab.

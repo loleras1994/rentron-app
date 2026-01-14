@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
 
   return {
-    base: '/app/',   // IMPORTANT: Your subfolder
+    base: '/test/',   // IMPORTANT: Your subfolder
 
     server: {
       port: 3000,

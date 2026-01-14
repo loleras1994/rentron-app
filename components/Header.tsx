@@ -32,13 +32,14 @@ const Header: React.FC<HeaderProps> = ({
 
   const allNavItems = [
     { id: 'orders', label: t('tabs.orders'), icon: <ClipboardListIcon className="w-5 h-5 mr-2" /> },
-    { id: 'pdf-import', label: t('tabs.pdfImport'), icon: <DocumentTextIcon className="w-5 h-5 mr-2" /> },
+    { id: 'pdf-import', label: t('tabs.pdf-import'), icon: <DocumentTextIcon className="w-5 h-5 mr-2" /> },
     { id: 'scan-product-sheet', label: t('tabs.scan-product-sheet'), icon: <CogIcon className="w-5 h-5 mr-2" /> },
     { id: 'daily-logs', label: t('tabs.daily-logs'), icon: <CalendarIcon className="w-5 h-5 mr-2" /> },
     { id: 'phase-manager', label: t('tabs.phase-manager'), icon: <CogIcon className="w-5 h-5 mr-2" /> }, 
     { id: 'live-phases', label: t('tabs.live-phases'), icon: <CogIcon className="w-5 h-5 mr-2" /> },
     { id: 'dead-time', label: t('tabs.dead-time'), icon: <CalendarIcon className="w-5 h-5 mr-2" /> },
     { id: 'batch-create', label: t('tabs.batch-create'), icon: <CollectionIcon className="w-5 h-5 mr-2" /> },
+    { id: 'frames', label: t('tabs.frames'), icon: <CollectionIcon className="w-5 h-5 mr-2" /> },
     { id: 'operator', label: t('tabs.operator'), icon: <CameraIcon className="w-5 h-5 mr-2" /> },
     { id: 'search', label: t('tabs.search'), icon: <SearchIcon className="w-5 h-5 mr-2" /> },
     { id: 'transactions', label: t('tabs.transactions'), icon: <DocumentTextIcon className="w-5 h-5 mr-2" /> },

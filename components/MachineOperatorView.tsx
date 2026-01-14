@@ -6,12 +6,15 @@ import type {
   Phase,
   PhaseLog,
   Material,
+  ActionType
 } from "../src/types";
 import Scanner from "./Scanner";
 import { useAuth } from "../hooks/useAuth";
 import { useWarehouse } from "../hooks/useWarehouse";
 import ConfirmModal from "../components/ConfirmModal";
 import { mapPhaseLog } from "../src/mapPhaseLog";
+import ActionModal from "./ActionModal";
+
 
 type StageType = "find" | "setup" | "production";
 
@@ -45,6 +48,14 @@ const normalizeProductPhases = (rawProduct: any | null | undefined) => {
   };
 };
 
+const buildProductionCode = (sheet: ProductionSheetForOperator | null): string => {
+  if (!sheet) return "";
+  const productCode = String(sheet.productId); 
+  const order = String(sheet.orderNumber);
+  return `${productCode}/${order}`;
+};
+
+
 /* ---------------------------------------------------------
    SAFELY RESOLVE MATERIALS
 --------------------------------------------------------- */
@@ -74,7 +85,8 @@ const resolveMaterialsForPhase = (
   return materials.filter(
     (wm) =>
       wm.materialCode &&
-      candidates.has(String(wm.materialCode).toLowerCase())
+      candidates.has(String(wm.materialCode).toLowerCase()) &&
+      (Number(wm.currentQuantity) || 0) > 0
   );
 };
 
@@ -195,6 +207,7 @@ const MachineOperatorView: React.FC = () => {
     null
   );
   const stageTimerRef = useRef<number | null>(null);
+  const modalResolverRef = useRef<((v: boolean) => void) | null>(null);
   const [stageSeconds, setStageSeconds] = useState(0);
 
   const [pendingStageTimes, setPendingStageTimes] = useState<
@@ -216,19 +229,40 @@ const MachineOperatorView: React.FC = () => {
     resolver: null,
   });
 
+  type ConsumeFlowState = {
+    open: boolean;
+    phaseId: string | null;
+    quantityDone: number;
+    candidates: Material[];
+    selectedMaterial: Material | null;
+  };
+
+  const [consumeFlow, setConsumeFlow] = useState<ConsumeFlowState>({
+    open: false,
+    phaseId: null,
+    quantityDone: 0,
+    candidates: [],
+    selectedMaterial: null,
+  });
+
+  const [consumeAction, setConsumeAction] = useState<ActionType | null>(null);
+
   const openModal = (title: string, message: string, buttons: any[]) =>
     new Promise<boolean>((resolve) => {
+      modalResolverRef.current = resolve;
       setModalData({
         open: true,
         title,
         message,
         buttons,
-        resolver: resolve,
+        resolver: null, // <- don't rely on state for resolver
       });
     });
 
   const closeModal = (value: boolean) => {
-    modalData.resolver?.(value);
+    const r = modalResolverRef.current;
+    modalResolverRef.current = null;
+    r?.(value);
     setModalData((m) => ({ ...m, open: false }));
   };
 
@@ -295,7 +329,7 @@ const MachineOperatorView: React.FC = () => {
         );
         return;
       }
-
+  /* ---------------------------------------------------------
       const hasPhase2or30 = data.product?.phases?.some((p: any) =>
         ["2", "30"].includes(String(p.phaseId))
       );
@@ -313,7 +347,7 @@ const MachineOperatorView: React.FC = () => {
       } else {
         setMaterialInfo(null);
       }
-
+   --------------------------------------------------------- */
       setViewState("details");
     } catch (err) {
       setError((err as Error).message);
@@ -391,6 +425,52 @@ const MachineOperatorView: React.FC = () => {
 
     return statuses;
   }, [sheet]);
+
+  useEffect(() => {
+    if (!sheet) {
+      setMaterialInfo(null);
+      return;
+    }
+
+    const hasPhase2or30 = (sheet.product?.phases ?? []).some((p: any) =>
+      ["2", "30"].includes(String(p.phaseId))
+    );
+
+    if (!hasPhase2or30) {
+      setMaterialInfo(null);
+      return;
+    }
+
+    // phase is considered "completed" if total done >= sheet.quantity
+    const done2 = phaseStatuses.get("2")?.done || 0;
+    const done30 = phaseStatuses.get("30")?.done || 0;
+    const phase2or30Completed = done2 >= sheet.quantity || done30 >= sheet.quantity;
+
+    if (phase2or30Completed) {
+      setMaterialInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const freshMaterials = await api.getMaterials();
+        if (cancelled) return;
+
+        // resolveMaterialsForPhase already filters > 0 now
+        const filtered = resolveMaterialsForPhase(sheet, freshMaterials);
+        setMaterialInfo(filtered.length ? filtered : null);
+      } catch (e) {
+        console.error("material info refresh failed:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sheet, phaseStatuses]);
+
 
   /* ---------------------------------------------------------
      FINISH PREVIOUS PHASE DIALOG
@@ -635,7 +715,7 @@ const MachineOperatorView: React.FC = () => {
 
     if (isPartial) {
       const qtyStr = prompt(`Enter quantity (1–${remaining}):`);
-      if (qtyStr === null) return; // user cancelled
+      if (qtyStr === null) return;
 
       const qty = parseInt(qtyStr.trim(), 10);
       if (!Number.isFinite(qty) || qty <= 0 || qty > remaining) {
@@ -648,14 +728,15 @@ const MachineOperatorView: React.FC = () => {
     clearStageTimer();
     const productionSeconds = stageSeconds;
 
+    // we'll decide consume AFTER loading finishes
+    const finishedPhaseId = phaseId;
+    const shouldAskConsume = ["2", "30"].includes(finishedPhaseId) && quantityDone > 0;
+
+    let updatedSheet: ProductionSheetForOperator | null = null;
+
     setIsLoading(true);
     try {
-      await api.finishPhase(
-        activeLog.id, // UUID string
-        new Date().toISOString(),
-        quantityDone,
-        productionSeconds
-      );
+      await api.finishPhase(activeLog.id, new Date().toISOString(), quantityDone, productionSeconds);
 
       if (user) {
         api.stopLivePhase(user.username).catch((e) =>
@@ -668,33 +749,82 @@ const MachineOperatorView: React.FC = () => {
       setCurrentStage(null);
       setCurrentStagePhaseId(null);
 
-      // Reload sheet with fresh, normalized logs
       const updatedRaw = await api.getProductionSheetByQr(sheet.qrValue);
-      const updated = normalizeSheet(updatedRaw);
-      setSheet(updated);
+      updatedSheet = normalizeSheet(updatedRaw);
+      setSheet(updatedSheet);
+    } catch (e) {
+      console.error("finishProductionStage error:", e);
+      setError((e as Error).message);
+      return; // don't continue to consume flow on failure
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // ✅ IMPORTANT: turn off loading BEFORE consume UI
     }
+
+    // ✅ NOW we are not in loading screen, safe to show consume prompt + UI
+    if (!shouldAskConsume) return;
+
+    const confirmConsume = await openModal(
+      t("machineOperator.consumeNowTitle"),
+      t("machineOperator.consumeNowMessage"),
+      [
+        { label: t("common.yes"), type: "primary", onClick: () => closeModal(true) },
+        { label: t("common.no"), type: "secondary", onClick: () => closeModal(false) },
+      ]
+    );
+
+    if (!confirmConsume) return;
+
+    // ✅ allow ConfirmModal to unmount before opening another modal/UI
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    );
+
+    // IMPORTANT: don't rely on stale materialInfo; fetch fresh list
+    const freshMaterials = await api.getMaterials();
+
+    const candidates = resolveMaterialsForPhase(updatedSheet ?? sheet, freshMaterials);
+
+    if (!candidates.length) {
+      await openModal(
+        t("machineOperator.noMaterialsTitle"),
+        t("machineOperator.noMaterialsMessage"),
+        [{ label: "OK", type: "primary", onClick: () => closeModal(false) }]
+      );
+      return;
+    }
+
+    setConsumeAction(null);
+    // open selection UI
+    setConsumeFlow({
+      open: true,
+      phaseId: finishedPhaseId,
+      quantityDone,
+      candidates,
+      selectedMaterial: null,
+    });
+
+    // keep the top info updated
+    setMaterialInfo(candidates);
   };
 
-  /* ---------------------------------------------------------
-     RESET
-  --------------------------------------------------------- */
-  const resetView = () => {
-    setSheet(null);
-    setError(null);
-    setActiveLog(null);
-    clearStageTimer();
-    setStageSeconds(0);
-    setCurrentStage(null);
-    setCurrentStagePhaseId(null);
-    setPendingStageTimes({});
-    setViewState("idle");
-  };
+    /* ---------------------------------------------------------
+      RESET
+    --------------------------------------------------------- */
+    const resetView = () => {
+      setSheet(null);
+      setError(null);
+      setActiveLog(null);
+      clearStageTimer();
+      setStageSeconds(0);
+      setCurrentStage(null);
+      setCurrentStagePhaseId(null);
+      setPendingStageTimes({});
+      setViewState("idle");
+    };
 
   /* ---------------------------------------------------------
      LOADING
-  --------------------------------------------------------- */
+ 
   if (isLoading)
     return (
       <>
@@ -708,7 +838,7 @@ const MachineOperatorView: React.FC = () => {
         <div className="text-center p-8">{t("common.loading")}</div>
       </>
     );
-
+ --------------------------------------------------------- */
   /* ---------------------------------------------------------
      SCANNING
   --------------------------------------------------------- */
@@ -722,6 +852,13 @@ const MachineOperatorView: React.FC = () => {
           buttons={modalData.buttons}
           onClose={closeModal}
         />
+        {isLoading && (
+          <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-xl px-6 py-4">
+              {t("common.loading")}
+            </div>
+          </div>
+        )}
         <div className="max-w-xl mx-auto">
           <Scanner
             onScanSuccess={handleScanSuccess}
@@ -793,7 +930,13 @@ const MachineOperatorView: React.FC = () => {
           buttons={modalData.buttons}
           onClose={closeModal}
         />
-
+        {isLoading && (
+          <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-xl px-6 py-4">
+              {t("common.loading")}
+            </div>
+          </div>
+        )}
         <div className="bg-white p-6 rounded-lg shadow-lg max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold mb-4">
             {t("machineOperator.sheetDetails")}
@@ -842,13 +985,202 @@ const MachineOperatorView: React.FC = () => {
                         ? `${mat.location.area}, Pos ${mat.location.position}`
                         : t("common.na")}
                     </p>
-                    <p>
-                      <strong>ID:</strong> {mat.id}
-                    </p>
                   </div>
                 ))}
               </div>
             </div>
+          )}
+
+          {/* CONSUME FLOW: SELECT MATERIAL (MODAL WINDOW) */}
+          {consumeFlow.open && !consumeFlow.selectedMaterial && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[60] p-4">
+              <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+                <div className="p-5 border-b flex justify-between items-center">
+                  <h4 className="text-xl font-semibold text-gray-800">
+                    {t("machineOperator.selectMaterialTitle")}
+                  </h4>
+
+                  <button
+                    onClick={() =>
+                      setConsumeFlow({
+                        open: false,
+                        phaseId: null,
+                        quantityDone: 0,
+                        candidates: [],
+                        selectedMaterial: null,
+                      })
+                    }
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-5">
+                  <p className="text-sm text-gray-700 mb-4">
+                    {t("machineOperator.selectMaterialHint", {
+                      qty: consumeFlow.quantityDone,
+                      phaseId: consumeFlow.phaseId,
+                    })}
+                  </p>
+
+                  <div className="space-y-2 max-h-[60vh] overflow-auto">
+                    {consumeFlow.candidates.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className="w-full text-left p-3 bg-white border rounded-md hover:bg-gray-50"
+                        onClick={() =>
+                          setConsumeFlow((prev) => ({ ...prev, selectedMaterial: m }))
+                        }
+                      >
+                        <div className="flex justify-between items-start gap-3">
+                          <div>
+                            <div className="font-mono">{m.materialCode}</div>
+                            <div className="text-xs text-gray-600">
+                              {m.location
+                                ? `${m.location.area}, Pos ${m.location.position}`
+                                : t("common.na")}
+                            </div>
+                          </div>
+                          <div className="text-sm whitespace-nowrap">
+                            {m.currentQuantity} / {m.initialQuantity}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 flex justify-end">
+                    <button
+                      type="button"
+                      className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300"
+                      onClick={() =>
+                        setConsumeFlow({
+                          open: false,
+                          phaseId: null,
+                          quantityDone: 0,
+                          candidates: [],
+                          selectedMaterial: null,
+                        })
+                      }
+                    >
+                      {t("machineOperator.cancel")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONSUME FLOW: CHOOSE ACTION (MODAL WINDOW) */}
+          {consumeFlow.open && consumeFlow.selectedMaterial && !consumeAction && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[60] p-4">
+              <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+                <div className="p-5 border-b flex justify-between items-center">
+                  <h4 className="text-xl font-semibold text-gray-800">
+                    {t("machineOperator.consumeActionTitle")}
+                  </h4>
+
+                  <button
+                    onClick={() => {
+                      // back to picker (or cancel everything if you prefer)
+                      setConsumeAction(null);
+                      setConsumeFlow((prev) => ({ ...prev, selectedMaterial: null }));
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-3">
+                  <div className="text-sm text-gray-600">
+                    <div>
+                      <strong>{t("common.material")}:</strong>{" "}
+                      <span className="font-mono">{consumeFlow.selectedMaterial.materialCode}</span>
+                    </div>
+                    <div className="mt-1">
+                      <strong>{t("common.quantity")}:</strong>{" "}
+                      {consumeFlow.selectedMaterial.currentQuantity} / {consumeFlow.selectedMaterial.initialQuantity}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      type="button"
+                      className="bg-red-600 text-white py-3 px-4 rounded-md hover:bg-red-700"
+                      onClick={() => setConsumeAction("CONSUMPTION")}
+                    >
+                      {t("machineOperator.fullConsumption")}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700"
+                      onClick={() => setConsumeAction("PARTIAL_CONSUMPTION")}
+                    >
+                      {t("machineOperator.partialConsumptionRelocate")}
+                    </button>
+                  </div>
+
+                  <div className="pt-2 flex justify-between gap-3">
+                    <button
+                      type="button"
+                      className="w-1/2 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300"
+                      onClick={() => {
+                        // back to picker
+                        setConsumeAction(null);
+                        setConsumeFlow((prev) => ({ ...prev, selectedMaterial: null }));
+                      }}
+                    >
+                      {t("common.back") ?? "Back"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="w-1/2 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600"
+                      onClick={() => {
+                        // cancel consume flow completely
+                        setConsumeAction(null);
+                        setConsumeFlow({
+                          open: false,
+                          phaseId: null,
+                          quantityDone: 0,
+                          candidates: [],
+                          selectedMaterial: null,
+                        });
+                      }}
+                    >
+                      {t("machineOperator.cancel")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ✅ CONSUME FLOW: ACTION MODAL */}
+          {consumeAction && consumeFlow.selectedMaterial && (
+            <ActionModal
+              actionType={consumeAction}
+              material={consumeFlow.selectedMaterial}
+              initialProductionCode={buildProductionCode(sheet)}
+              onClose={() => setConsumeAction(null)}
+              onComplete={async () => {
+                setConsumeAction(null);
+                setConsumeFlow({
+                  open: false,
+                  phaseId: null,
+                  quantityDone: 0,
+                  candidates: [],
+                  selectedMaterial: null,
+                });
+
+                const freshMaterials = await api.getMaterials();
+                setMaterialInfo(resolveMaterialsForPhase(sheet, freshMaterials));
+              }}
+            />
           )}
 
           {/* PHASES */}
@@ -1095,7 +1427,13 @@ const MachineOperatorView: React.FC = () => {
         buttons={modalData.buttons}
         onClose={closeModal}
       />
-
+      {isLoading && (
+        <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl px-6 py-4">
+            {t("common.loading")}
+          </div>
+        </div>
+      )}
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto text-center">
         <h2 className="text-2xl font-bold mb-4">{t("machineOperator.title")}</h2>
         <p className="text-gray-600 mb-6">{t("machineOperator.scanPrompt")}</p>

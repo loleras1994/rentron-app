@@ -1,12 +1,24 @@
 
-import type { AllowedView, UserRole, Phase } from './types';
+import type { AllowedView, UserRole, Phase } from './src/types';
 
-export const WAREHOUSE_AREAS = ["Foriamos A", "Foriamos B", "Foriamos C", "Foriamos D"];
-export const WAREHOUSE_POSITIONS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+export const WAREHOUSE_AREAS = [
+  // A1–A10
+  ...Array.from({ length: 10 }, (_, i) => `A${i + 1}`),
+
+  // B1–B5
+  ...Array.from({ length: 5 }, (_, i) => `B${i + 1}`),
+
+  // O
+  "O",
+] as const;
+
+export const WAREHOUSE_POSITIONS = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9,
+] as const;
 
 export const ALL_ALLOWED_VIEWS: AllowedView[] = ['operator', 'search', 'manager', 'batch-create', 'transactions', 'orders', 'scan-product-sheet', 'daily-logs'];
 export const USER_SELECTABLE_TABS: AllowedView[] = ['operator', 'search', 'batch-create', 'transactions'];
-export const ALL_ROLES: UserRole[] = ['operator', 'manager', 'orderkeeper', 'machineoperator', 'infraoperator', 'storekeeper'];
+export const ALL_ROLES: UserRole[] = ['operator', 'manager', 'orderkeeper', 'machineoperator', 'infraoperator', 'storekeeper', 'framekeeper'];
 
 // New Constants for Production Phases
 export const PHASES: Phase[] = [

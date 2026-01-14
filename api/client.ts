@@ -11,6 +11,9 @@ import type {
   Phase,
   PhaseLog,
   ProductionSheetForOperator,
+  Frame, 
+  FramePosition, 
+  FrameQuality
 } from "../src/types";
 /*import { mapPhaseLog } from "../src/mapPhaseLog";*/
 import { mapDailyLog } from "../src/mapDailyLog";
@@ -18,7 +21,7 @@ import { mapDailyLog } from "../src/mapDailyLog";
    Real backend client – Express + SQLite
    ============================================================ */
 
-const API_URL = "https://apit.rentron.gr";
+const API_URL = "https://api.rentron.gr";
 
 
 /* ---------------- Generic helper ---------------- */
@@ -52,6 +55,7 @@ const getTabsForRoles = (roles: UserRole[]): AllowedView[] => {
       "daily-logs",
       "phase-manager",
       "batch-create",
+      "frames",
       "operator",
       "search",
       "transactions",
@@ -81,6 +85,9 @@ const getTabsForRoles = (roles: UserRole[]): AllowedView[] => {
     tabs.add("operator");
     tabs.add("search");
   }
+  if (roles.includes("framekeeper")) {
+    tabs.add("frames");
+  }
 
   return Array.from(tabs);
 };
@@ -95,8 +102,8 @@ export const getUsers = async (): Promise<User[]> => {
     username: u.username,
     roles: [u.role],
     allowedTabs: u.allowedTabs || [],
-    createdAt: u.created_at,
-    lastLogin: u.lastLogin,
+    createdAt: u.createdAt ?? u.created_at ?? null,
+    lastLogin: u.lastLogin ?? u.last_login ?? null,
     passwordHash: "",
   }));
 };
@@ -319,8 +326,10 @@ export const updateMaterial = async (
 /* ============================================================
    TRANSACTIONS
    ============================================================ */
-export const getTransactions = async (): Promise<Transaction[]> =>
-  apiFetch<Transaction[]>("/transactions");
+export const getTransactions = async (): Promise<Transaction[]> => {
+  return apiFetch<Transaction[]>("/transactions?limit=1000");
+};
+
 
 /* ============================================================
    PRODUCTION / ORDERS / PHASES / LOGS
@@ -353,9 +362,42 @@ export const getSheetsByOrderId = async (
   orderNumber: string
 ): Promise<ProductionSheet[]> => apiFetch(`/production_sheets/${orderNumber}`);
 
+type ProductDefDTO = {
+  id: string;
+  name: string;
+  materials: {
+    materialId: string;
+    quantityPerPiece: number;
+    totalQuantity?: number;
+    position?: string; // ✅ string
+  }[];
+  phases: {
+    phaseId: string;
+    setupTime: number;
+    productionTimePerPiece: number;
+    totalSetupTime?: number;
+    totalProductionTime?: number;
+    position: string; // ✅ string (required)
+  }[];
+};
+
+type SheetCreateDTO = {
+  productionSheetNumber: string;
+  productId: string;
+  quantity: number;
+  orderNumber: string;
+  productDef: ProductDefDTO;
+};
+
+type SheetUpdateDTO = {
+  quantity: number;
+  productDef: ProductDefDTO;
+};
+
+
 export const createOrderAndSheets = async (
   orderNumber: string,
-  sheets: Omit<ProductionSheet, "id" | "qrValue">[]
+  sheets: SheetCreateDTO[]
 ): Promise<ProductionSheet[]> =>
   apiFetch<ProductionSheet[]>("/production_sheets", {
     method: "POST",
@@ -371,21 +413,42 @@ export const getProductionSheetByQr = async (
 
 export const updateProductionSheet = async (
   productionSheetNumber: string,
-  data: {
-    quantity: number;
-    productDef: {
-      id: string;
-      name: string;
-      materials: { materialId: string; quantityPerPiece: number }[];
-      phases: { phaseId: string; position: number; setupTime: number; productionTimePerPiece: number }[];
-    };
-  }
+  data: SheetUpdateDTO
 ) => {
   return apiFetch(`/production_sheets/${productionSheetNumber}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 };
+
+export const updateProductionSheetForOrder = async (
+  orderNumber: string,
+  productionSheetNumber: string,
+  data: SheetUpdateDTO
+) => {
+  return apiFetch(
+    `/production_sheets/${encodeURIComponent(orderNumber)}/${encodeURIComponent(
+      productionSheetNumber
+    )}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }
+  );
+};
+
+export const getProductionSheetForOrder = async (
+  orderNumber: string,
+  productionSheetNumber: string
+) => {
+  return apiFetch(
+    `/production_sheets/${encodeURIComponent(orderNumber)}/${encodeURIComponent(
+      productionSheetNumber
+    )}`,
+    { method: "GET" }
+  );
+};
+
 
 export const getPhases = async (): Promise<Phase[]> =>
   apiFetch<Phase[]>("/phases");
@@ -448,6 +511,13 @@ export const updatePhase = (id: string, name: string) =>
 export const deletePhase = (id: string) =>
   apiFetch(`/phases/${id}`, { method: "DELETE" });
 
+export type MaterialTicket = {
+  productionSheetNumber: string;
+  itemCode: string;
+  description: string;
+  qtyText: string;
+  unit: string;
+};
 
 export interface ParsedPdfMulti {
   orderNumber: string;
@@ -460,13 +530,23 @@ export interface ParsedPdfMulti {
       materials: { materialId: string; quantityPerPiece: number }[];
       phases: {
         phaseId: string;
-        position: number;
+        position: string;
         setupTime: number;
         productionTimePerPiece: number;
       }[];
     };
   }[];
+  materialTickets: MaterialTicket[];
+
+  // ✅ NEW: pages metadata for printing selected pages
+  pdfPages?: Array<{
+    pageNumber: number; // 1-based
+    type: "ORDER_CARD" | "STORAGE" | "OTHER";
+    productionSheetNumber: string | null;
+    isEndOfList?: boolean; // optional (if you added it in backend)
+  }>;
 }
+
 
 export const parseOrderPdf = async (file: File): Promise<ParsedPdfMulti> => {
   const formData = new FormData();
@@ -487,6 +567,24 @@ export const parseOrderPdf = async (file: File): Promise<ParsedPdfMulti> => {
 
   return parsedData;
 };
+
+export async function parseMaterialsPdf(file: File): Promise<{ materials: string[] }> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_URL}/parse_materials_pdf`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt);
+  }
+
+  return res.json();
+}
 
 
 export const updateMyPassword = async (oldPassword: string, newPassword: string) => {
@@ -531,11 +629,18 @@ export async function getMaterial(id: string): Promise<Material | null> {
 }
 
 
-export async function searchMaterials(term: string): Promise<Material[]> {
-  return apiFetch<Material[]>(
-    `/api/materials/search?term=${encodeURIComponent(term)}`
-  );
+export async function searchMaterials(
+  term: string,
+  includeConsumed: boolean = false
+): Promise<Material[]> {
+  const qs = new URLSearchParams({
+    term: term,
+    includeConsumed: includeConsumed ? "1" : "0",
+  });
+
+  return apiFetch<Material[]>(`/api/materials/search?${qs.toString()}`);
 }
+
 
 export async function placeMaterial(id: string, area: string, position: string) {
   return apiFetch(`/materials/place`, {
@@ -669,3 +774,68 @@ export async function finishDeadTime(id: string) {
    ============================================================ */
 export const pingServer = async () =>
   apiFetch<{ ok: boolean; time: string }>("/health");
+
+
+/* ============================================================
+   FRAMES
+   ============================================================ */
+
+export const getFrames = async (): Promise<Frame[]> => {
+  const rows = await apiFetch<any[]>("/frames");
+  return rows.map((r) => ({
+    id: String(r.id),
+    frameId: Number(r.frameId),
+    widthCm: r.widthCm ?? null,
+    heightCm: r.heightCm ?? null,
+    quality: r.quality ?? null,
+    position: r.position ?? null,
+    productIds: Array.isArray(r.productIds) ? r.productIds : [],
+    createdAt: r.created_at || r.createdAt,
+    updatedAt: r.updated_at || r.updatedAt,
+  }));
+};
+
+export const createFrame = async (frameId: number): Promise<Frame> => {
+  const r = await apiFetch<any>("/frames", {
+    method: "POST",
+    body: JSON.stringify({ frameId }),
+  });
+
+  return {
+    frameId: Number(r.frameId),
+    widthCm: r.widthCm ?? null,
+    heightCm: r.heightCm ?? null,
+    quality: r.quality ?? null,
+    position: r.position ?? null,
+    productIds: Array.isArray(r.productIds) ? r.productIds : [],
+    createdAt: r.created_at || r.createdAt,
+    updatedAt: r.updated_at || r.updatedAt,
+  };
+};
+
+export const updateFrame = async (
+  frameId: number,
+  data: {
+    position?: FramePosition | null;
+    quality?: FrameQuality | null;
+    widthCm?: number | null;
+    heightCm?: number | null;
+    productIds?: string[];
+  }
+): Promise<Frame> => {
+  const r = await apiFetch<any>(`/frames/${frameId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+
+  return {
+    frameId: Number(r.frameId),
+    widthCm: r.widthCm ?? null,
+    heightCm: r.heightCm ?? null,
+    quality: r.quality ?? null,
+    position: r.position ?? null,
+    productIds: Array.isArray(r.productIds) ? r.productIds : [],
+    createdAt: r.created_at || r.createdAt,
+    updatedAt: r.updated_at || r.updatedAt,
+  };
+};

@@ -6,19 +6,22 @@ import { CloseIcon } from './Icons';
 import { useTranslation } from '../hooks/useTranslation';
 
 interface ActionModalProps {
-    actionType: ActionType;
-    material: Material;
-    onClose: () => void;
-    onComplete: () => void;
+  actionType: ActionType;
+  material: Material;
+  onClose: () => void;
+  onComplete: () => void;
+
+  initialProductionCode?: string; // ✅ add this
 }
 
-const ActionModal: React.FC<ActionModalProps> = ({ actionType, material, onClose, onComplete }) => {
+
+const ActionModal: React.FC<ActionModalProps> = ({ actionType, material, onClose, onComplete, initialProductionCode = "" }) => {
     const { updateMaterialConsumption, updateMaterialLocation, updatePartialConsumption } = useWarehouse();
     const { t } = useTranslation();
     
-    const [productionCode, setProductionCode] = useState('');
-    const [area, setArea] = useState(WAREHOUSE_AREAS[0]);
-    const [position, setPosition] = useState(WAREHOUSE_POSITIONS[0]);
+    const [productionCode, setProductionCode] = useState(initialProductionCode);
+    const [area, setArea] = useState<string>(String(WAREHOUSE_AREAS[0]));
+    const [position, setPosition] = useState<string>(String(WAREHOUSE_POSITIONS[0]));
     const [consumedQuantity, setConsumedQuantity] = useState('');
     const [error, setError] = useState('');
     const [isConfirming, setIsConfirming] = useState(false);
@@ -98,7 +101,11 @@ const ActionModal: React.FC<ActionModalProps> = ({ actionType, material, onClose
                 <div>
                     <label className="block text-sm font-medium text-gray-700">{t('actionModal.newPositionLabel')}</label>
                     <select value={position} onChange={e => setPosition(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100" disabled={isSubmitting}>
-                        {WAREHOUSE_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                        {WAREHOUSE_POSITIONS.map((p) => (
+                        <option key={String(p)} value={String(p)}>
+                            {String(p)}
+                        </option>
+                        ))}
                     </select>
                 </div>
             </>

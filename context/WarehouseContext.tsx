@@ -6,7 +6,7 @@ import React, {
   useCallback
 } from "react";
 
-import type { Material, MaterialLocation } from "../types";
+import type { Material, MaterialLocation } from "../src/types";
 
 import {
   getMaterials,

@@ -11,7 +11,13 @@
     "quantity": "Quantity",
     "location": "Location",
     "na": "N/A",
-    "material": "Material"
+    "material": "Material",
+    "clear": "Clear",
+    "yes": "Yes",
+    "no": "No",
+    "back": "Back",
+    "dash": "—",
+    "saving": "Saving..."    
   },
   "header": {
     "title": "Warehouse Tracker",
@@ -24,7 +30,8 @@
     "orderkeeper": "Order Keeper",
     "machineoperator": "Machine Operator",
     "infraoperator": "Infra Operator",
-    "storekeeper": "Storekeeper"
+    "storekeeper": "Storekeeper",
+    "framekeeper": "Framekeeper"
   },
   "tabs": {
     "operator": "Operator",
@@ -36,10 +43,11 @@
     "scan-product-sheet": "Scan Product Sheet",
     "daily-logs": "Daily Logs",
     "phase-manager": "Phase Manager",
-    "pdfImport": "Import PDF Orders",
+    "pdf-import": "Import PDF Orders",
     "live-phases": "Live Phases",
     "account": "Account Settings",
-    "dead-time": "Dead Time"
+    "dead-time": "Dead Time",
+    "frames": "Frames"
   },
   "login": {
     "title": "Warehouse Tracker",
@@ -92,7 +100,9 @@
       "movedFromTo": "From: {{fromArea}}, Pos {{fromPosition}} -> To: {{toArea}}, Pos {{toPosition}}",
       "consumed": "Production Code: {{productionCode}}, Consumed: {{consumed}}",
       "partiallyConsumed": "Prod. Code: {{productionCode}}, Consumed: {{consumed}}, Remaining: {{remaining}}, New Location: {{newLocationArea}}, Pos {{newLocationPosition}}"
-    }
+    },
+    "showConsumed": "Show fully consumed materials",
+    "noAvailableResults": "No available materials found for \"{{searchTerm}}\"."
   },
   "qrModal": {
     "title": "Material Label",
@@ -160,7 +170,22 @@
     "saving": "Saving...",
     "generatedLabelsTitle": "Generated Labels",
     "printStickerLayout": "Print Sticker Layout (A4 Sheet)",
-    "printFullBleedLayout": "Print Full-Bleed Layout (A4 Sheet)"
+    "printFullBleedLayout": "Print Full-Bleed Layout (A4 Sheet)",
+    "pdf": {
+      "title": "Import from PDF",
+      "selected": "Selected PDFs",
+      "parseBtn": "Parse PDFs",
+      "parsing": "Parsing...",
+      "found": "Found",
+      "codes": "material codes",
+      "fillQtyHint": "Quantities were left empty — fill them below and click \"Save All\".",
+      "noMaterialsFound": "No materials found in this PDF.",
+      "noMaterialsInAll": "No material codes found in the selected PDFs.",
+      "parseFailed": "Failed to parse PDF.",
+      "someFailed": "Some PDFs had issues:"
+    },
+    "needValidRow": "Add at least one valid row (code + qty > 0)",
+    "saveRowFailed": "Failed to create material {{code}}. It might already exist or there was a server error."
   },
   "transactions": {
     "title": "Transaction History",
@@ -172,7 +197,9 @@
       "change": "Change",
       "reason": "Reason",
       "user": "User",
-      "date": "Date"
+      "date": "Date",
+      "materialName": "Material",
+      "location": "Location"
     }
   },
   "orderkeeper": {
@@ -233,11 +260,92 @@
     "quantityDone": "Quantity Done",
     "maxQty": "Max",
     "submit": "Submit",
-    "materialInfo": "Material Information"
+    "materialInfo": "Material Information",
+    "consumeNowTitle": "Consume material now?",
+    "consumeNowMessage": "You finished production. Do you want to consume the material now?",
+    "selectMaterialTitle": "Select material to consume",
+    "selectMaterialHint": "Finished qty: {{qty}} (Phase {{phaseId}})",
+    "noMaterialsTitle": "No materials found",
+    "noMaterialsMessage": "There are no available materials to select for this product.",
+    "consumeActionTitle": "Consume action",
+    "partialConsumptionRelocate": "Partial consumption + relocate",
+    "fullConsumption": "Full consumption",
+    "cancel": "Cancel"
   },
   "infraOperator": {
     "title": "Daily Operations Log",
     "selectDate": "Select a date to generate the report:",
     "exportCsv": "Export Daily CSV"
+  },
+  "account": {
+    "title": "Account Settings",
+    "language": "Choose App Language",
+    "changePassword": "Change Your Password",
+    "oldPassword": "Type your old password here.",
+    "newPassword": "Type your new password here.",
+    "confirmPassword": "Confirm new password.",
+    "savePassword": "Save new password."
+  },
+  "frames": {
+    "title": "Frames",
+    "loading": "Loading frames...",
+    "frame": "FRAME",
+    "qr": {
+      "containsOnly": "QR contains only"
+    },
+    "alert": {
+      "enterFrameIds": "Enter one or more FrameIds (e.g. 1,2,3-6)."
+    },
+    "scan": {
+      "button": "Frame Scan",
+      "title": "Scan QR",
+      "scanned": "Scanned",
+      "help": "Point the camera at the frame QR. It will auto-open that frame editor.",
+      "notSupported": "QR scanning is not supported in this browser. Use Chrome (Android) or a device/browser that supports BarcodeDetector.",
+      "permissionDenied": "Camera permission denied or not available."
+    },
+    "createPrint": {
+      "title": "Create / Print Frame Stickers",
+      "frameIdsPlaceholder": "FrameIds (e.g. 1,2,3-6 10)",
+      "createOnly": "Create Frame(s) + QR",
+      "createAndPrintStickers": "Create & Print Stickers",
+      "createAndPrintFull": "Create & Print Full Bleed",
+      "printAllStickers": "Print Sticker Layout (all)",
+      "printAllFull": "Print Full Bleed (all)"
+    },
+    "print": {
+      "title": "Print Frame QR Labels",
+      "chromeWarning": "IMPORTANT: For perfect alignment in Chrome, disable \"Headers and footers\" in the print settings dialog."
+    },
+    "filters": {
+      "title": "Filter Frames",
+      "showing": "Showing",
+      "productId": "ProductId",
+      "productIdPlaceholder": "Type productId",
+      "productHelp": "Shows frames that include this productId.",
+      "minWidth": "Min width (cm)",
+      "minWidthPlaceholder": "e.g. 30",
+      "minHeight": "Min height (cm)",
+      "minHeightPlaceholder": "e.g. 40",
+      "clear": "Clear filters",
+      "clearAndJump": "Clear + jump to scanned",
+      "noResults": "No frames match the current filters.",
+      "quality": "Quality"
+    },
+    "fields": {
+      "position": "Position",
+      "quality": "Quality",
+      "size": "Size",
+      "positionLabel": "Position (1-17)",
+      "qualityLabel": "Quality",
+      "widthLabel": "Width (cm)",
+      "heightLabel": "Height (cm)"
+    },
+    "products": {
+      "inputLabel": "Products included (type codes)",
+      "placeholder": "e.g. PRD001, PRD002 PRD003",
+      "saved": "Saved",
+      "unknownWarning": "Some product codes are unknown (not found in Products list) — saved anyway."
+    }
   }
 }

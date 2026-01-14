@@ -1,5 +1,5 @@
 import React, { createContext, useState, ReactNode, useCallback, useEffect } from 'react';
-import type { Language } from '../types';
+import type { Language } from '../src/types';
 
 // Load translations asynchronously (NO top-level await)
 async function loadTranslations() {
