@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "../hooks/useTranslation";
 import * as api from "../api/client";
 import type { Product, ProductForUI, ProductionSheet, Phase } from "../src/types";
@@ -10,7 +10,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 // ----------------------------------------------------
 type PhaseWithUID = any & { __uid?: string; __deleted?: boolean };
 type ProductDefWithMeta = any & {
-  __snapshotPhasePositions?: string[];
   __lockedPositions?: string[];
   __materialsLocked?: boolean;
 };
@@ -100,21 +99,20 @@ const ProductDefinition: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.phases]);
 
-  // Visible phases only (hide deleted + tombstones)
+  // Visible phases only (hide deleted + tombstones) + KEEP ORIGINAL INDEX
   const phasesWithIndex = useMemo(() => {
     const all = ((product as any).phases || []) as PhaseWithUID[];
+
     return all
-      .filter((p) => !p.__deleted && String(p.phaseId || "").trim() !== "")
-      .map((p, idx) => ({ p: { ...p, __uid: p.__uid || "" }, idx }))
+      .map((p, originalIndex) => ({
+        p: { ...p, __uid: p.__uid || "" },
+        originalIndex,
+      }))
+      .filter(({ p }) => !p.__deleted && String(p.phaseId || "").trim() !== "")
       .sort((a, b) => posNum(a.p.position) - posNum(b.p.position));
   }, [product.phases]);
 
-  const updateField = (
-    field: "materials" | "phases",
-    index: number,
-    key: string,
-    value: any
-  ) => {
+  const updateField = (field: "materials" | "phases", index: number, key: string, value: any) => {
     const copy: any = { ...product };
     copy.materials = [...(copy.materials || [])];
     copy.phases = [...(copy.phases || [])];
@@ -133,8 +131,7 @@ const ProductDefinition: React.FC<{
       const total = parseFloat(value) || 0;
       copy.materials[index] = { ...copy.materials[index] };
       copy.materials[index].totalQuantity = parseFloat(total.toFixed(2));
-      copy.materials[index].quantityPerPiece =
-        qty > 0 ? parseFloat((total / qty).toFixed(2)) : 0;
+      copy.materials[index].quantityPerPiece = qty > 0 ? parseFloat((total / qty).toFixed(2)) : 0;
 
       if (autoPositioning) copy.materials = renumberMaterials(copy.materials);
     }
@@ -230,20 +227,8 @@ const ProductDefinition: React.FC<{
     const idx = copy.phases.findIndex((x: PhaseWithUID) => x.__uid === cur.__uid);
     if (idx < 0) return;
 
-    if (autoPositioning) {
-      // create mode: real delete
-      copy.phases.splice(idx, 1);
-      const fixed = sanitizeLayoutCreateMode(copy.materials || [], copy.phases);
-      copy.materials = fixed.materials;
-      copy.phases = fixed.phases;
-    } else {
-      // update mode: tombstone
-      copy.phases[idx] = {
-        ...copy.phases[idx],
-        phaseId: "",
-        __deleted: true, // hide in UI
-      };
-    }
+    // delete from state (both create + update)
+    copy.phases.splice(idx, 1);
 
     copy.phases = sortPhasesByPosition(copy.phases);
     updateProduct(copy);
@@ -336,8 +321,7 @@ const ProductDefinition: React.FC<{
         <h4 className="font-semibold text-gray-700 mb-2">{t("orderkeeper.materials")}</h4>
 
         {(product.materials || []).map((m: any, i: number) => {
-          const totalQty =
-            m.totalQuantity !== undefined ? m.totalQuantity : (m.quantityPerPiece || 0) * qty;
+          const totalQty = m.totalQuantity !== undefined ? m.totalQuantity : (m.quantityPerPiece || 0) * qty;
 
           return (
             <div key={i} className="grid grid-cols-12 gap-2 mb-2 items-end">
@@ -386,9 +370,7 @@ const ProductDefinition: React.FC<{
         </button>
 
         {materialsLocked && (
-          <div className="text-xs text-red-600 mt-2">
-            {t("orderkeeper.alerts.materialsLocked") || "Materials locked (production started)."}
-          </div>
+          <div className="text-xs text-red-600 mt-2">{t("orderkeeper.alerts.materialsLocked")}</div>
         )}
       </div>
 
@@ -396,25 +378,22 @@ const ProductDefinition: React.FC<{
       <div>
         <h4 className="font-semibold text-gray-700 mb-2">{t("orderkeeper.phases")}</h4>
 
-        {phasesWithIndex.map(({ p, idx }, renderIndex: number) => {
+        {phasesWithIndex.map(({ p, originalIndex }, renderIndex: number) => {
           const totalProd =
-            p.totalProductionTime !== undefined
-              ? p.totalProductionTime
-              : (p.productionTimePerPiece || 0) * qty;
+            p.totalProductionTime !== undefined ? p.totalProductionTime : (p.productionTimePerPiece || 0) * qty;
 
           const totalSetup = p.totalSetupTime !== undefined ? p.totalSetupTime : p.setupTime;
-
           const isLocked = lockedSet.has(normPos(p.position));
 
           return (
             <div
-              key={(p as any).__uid || `${idx}-${p.phaseId}-${p.position}`}
+              key={(p as any).__uid || `${originalIndex}-${p.phaseId}-${p.position}`}
               className="grid grid-cols-12 gap-2 mb-2 items-end"
             >
               <div className="col-span-4">
                 <select
                   value={p.phaseId}
-                  onChange={(e) => updateField("phases", idx, "phaseId", e.target.value)}
+                  onChange={(e) => updateField("phases", originalIndex, "phaseId", e.target.value)}
                   className="input-style"
                   disabled={isLocked}
                 >
@@ -428,14 +407,13 @@ const ProductDefinition: React.FC<{
 
               <div className="col-span-3">
                 <label className="block text-xs text-gray-600 mb-1">
-                  {t("orderkeeper.labels.setupPerPhase")}: {Number(p.setupTime || 0).toFixed(1)}{" "}
-                  {t("orderkeeper.units.minutes")}
+                  {t("orderkeeper.labels.setupPerPhase")}: {Number(p.setupTime || 0).toFixed(1)} {t("orderkeeper.units.minutes")}
                 </label>
                 <input
                   type="number"
                   placeholder={t("orderkeeper.placeholders.setupMinutes")}
                   value={totalSetup}
-                  onChange={(e) => updateField("phases", idx, "totalSetupTime", e.target.value)}
+                  onChange={(e) => updateField("phases", originalIndex, "totalSetupTime", e.target.value)}
                   className="input-style"
                   disabled={isLocked}
                 />
@@ -443,15 +421,14 @@ const ProductDefinition: React.FC<{
 
               <div className="col-span-3">
                 <label className="block text-xs text-gray-600 mb-1">
-                  {t("orderkeeper.labels.prodPerPiece")}:{" "}
-                  {Number(p.productionTimePerPiece || 0).toFixed(2)}{" "}
+                  {t("orderkeeper.labels.prodPerPiece")}: {Number(p.productionTimePerPiece || 0).toFixed(2)}{" "}
                   {t("orderkeeper.units.minutes")}
                 </label>
                 <input
                   type="number"
                   placeholder={t("orderkeeper.placeholders.totalMinutes")}
                   value={totalProd}
-                  onChange={(e) => updateField("phases", idx, "totalProductionTime", e.target.value)}
+                  onChange={(e) => updateField("phases", originalIndex, "totalProductionTime", e.target.value)}
                   className="input-style"
                   disabled={isLocked}
                 />
@@ -459,17 +436,23 @@ const ProductDefinition: React.FC<{
 
               <div className="col-span-2 flex flex-col items-end gap-1">
                 {showPhasePosition && (
-                  <>
-                    <div className="text-xs text-gray-600">
-                      {t("orderkeeper.position")}:{" "}
-                      <span className="font-semibold">{p.position}</span>
-                      {isLocked ? <span className="ml-1 text-red-600">(LOCK)</span> : null}
-                    </div>
-                    <div className="flex gap-1">
+                  <div className="text-xs text-gray-600">
+                    {t("orderkeeper.position")}: <span className="font-semibold">{p.position}</span>
+                    {isLocked ? <span className="ml-1 text-red-600">({t("orderkeeper.lockedTag")})</span> : null}
+                  </div>
+                )}
+
+                <div className="flex gap-1">
+                  {showPhasePosition && (
+                    <>
                       <button
                         type="button"
                         onClick={() => movePhase(renderIndex, -1)}
-                        disabled={renderIndex === 0 || isLocked}
+                        disabled={
+                          renderIndex === 0 ||
+                          isLocked ||
+                          lockedSet.has(normPos(phasesWithIndex[renderIndex - 1]?.p?.position))
+                        }
                         className="btn-secondary text-sm px-2"
                         title={t("orderkeeper.moveUp")}
                       >
@@ -479,26 +462,31 @@ const ProductDefinition: React.FC<{
                       <button
                         type="button"
                         onClick={() => movePhase(renderIndex, +1)}
-                        disabled={renderIndex === phasesWithIndex.length - 1 || isLocked}
+                        disabled={
+                          renderIndex === phasesWithIndex.length - 1 ||
+                          isLocked ||
+                          lockedSet.has(normPos(phasesWithIndex[renderIndex + 1]?.p?.position))
+                        }
                         className="btn-secondary text-sm px-2"
                         title={t("orderkeeper.moveDown")}
                       >
                         ▼
                       </button>
+                    </>
+                  )}
 
-                      <button
-                        type="button"
-                        onClick={() => removePhase(renderIndex)}
-                        disabled={isLocked}
-                        className="btn-secondary text-sm px-2"
-                        title={t("orderkeeper.removePhase")}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => removePhase(renderIndex)}
+                    disabled={isLocked}
+                    className="btn-secondary text-sm px-2"
+                    title={t("orderkeeper.removePhase")}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
+
             </div>
           );
         })}
@@ -543,6 +531,10 @@ const OrderKeeperView: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Prevent repeated auto-confirm calls
+  const lastConfirmedOrderRef = useRef<{ mode: Mode; order: string } | null>(null);
+  const lastConfirmedSheetRef = useRef<{ order: string; sheet: string } | null>(null);
+
   useEffect(() => {
     api.getProducts().then(setExistingProducts);
     api.getPhases().then(setPhasesList);
@@ -564,6 +556,8 @@ const OrderKeeperView: React.FC = () => {
     setExistingSheetsForReprint([]);
     setSelectedSheetsToReprint([]);
     setGeneratedSheets([]);
+    lastConfirmedOrderRef.current = null;
+    lastConfirmedSheetRef.current = null;
   };
 
   const setModeAndReset = (m: Mode) => {
@@ -576,6 +570,8 @@ const OrderKeeperView: React.FC = () => {
     setExistingSheetsForReprint([]);
     setSelectedSheetsToReprint([]);
     setGeneratedSheets([]);
+    lastConfirmedOrderRef.current = null;
+    lastConfirmedSheetRef.current = null;
   };
 
   const addSheet = () => {
@@ -595,10 +591,7 @@ const OrderKeeperView: React.FC = () => {
     const sheet = { ...newSheets[index] };
     (sheet as any)[field] = value;
 
-    const qty = Math.max(
-      0,
-      parseInt(field === "quantity" ? value : sheet.quantity || "0", 10) || 0
-    );
+    const qty = Math.max(0, parseInt(field === "quantity" ? value : sheet.quantity || "0", 10) || 0);
 
     if (field === "productId" || field === "quantity") {
       const base = existingProducts.find((p) => p.id === sheet.productId);
@@ -631,7 +624,6 @@ const OrderKeeperView: React.FC = () => {
           };
         });
 
-        // meta for update mode not needed here
         sheet.productDef = copy;
       }
     }
@@ -641,96 +633,29 @@ const OrderKeeperView: React.FC = () => {
   };
 
   // Build DTO that works with YOUR backend merge-by-position and allows deletes via tombstones
-  const toProductDefDTO = (p: ProductDefWithMeta, opts?: { forUpdate?: boolean }): any => {
-    const forUpdate = !!opts?.forUpdate;
+  const toProductDefDTO = (p: ProductDefWithMeta): any => {
+    const qty = Number((p as any).quantity || 0);
 
-    const snapArr: string[] = Array.isArray(p.__snapshotPhasePositions)
-      ? (p.__snapshotPhasePositions as unknown[]).map(normPos)
-      : [];
-
-    const lockedArr: string[] = Array.isArray(p.__lockedPositions)
-      ? (p.__lockedPositions as unknown[]).map(normPos)
-      : [];
-
-    const snapshotPositions = new Set<string>(snapArr);
-    const lockedPositions = new Set<string>(lockedArr);
-
-    // materials: DO NOT renumber in update mode (materials lock compares JSON)
     const materials = (p.materials || []).map((m: any, i: number) => ({
-      materialId: m.materialId,
+      materialId: String(m.materialId || "").trim(),
       quantityPerPiece: Number(m.quantityPerPiece || 0),
       totalQuantity: m.totalQuantity != null ? Number(m.totalQuantity) : undefined,
       position: m.position != null ? String(m.position) : String((i + 1) * 10),
     }));
 
-    // phases we keep in state may include deleted ones. For backend:
-    // - keep real phases (phaseId != "")
-    // - keep tombstones (phaseId="") for deleted positions
-    const allPhasesState: PhaseWithUID[] = ensurePhaseUids((p.phases || []) as any);
-
-    // Build a map position -> phasePayload we intend to send
-    const outgoingByPos = new Map<string, any>();
-
-    for (const ph of allPhasesState) {
-      const pos = normPos(ph.position);
-      if (!pos) continue;
-
-      const phaseId = String(ph.phaseId || "").trim();
-
-      // locked positions: send current phase as-is (safe)
-      if (lockedPositions.has(pos)) {
-        outgoingByPos.set(pos, {
-          phaseId: phaseId,
-          position: String(pos),
-          setupTime: Number(ph.setupTime || 0),
-          productionTimePerPiece: Number(ph.productionTimePerPiece || 0),
-          totalSetupTime: ph.totalSetupTime != null ? Number(ph.totalSetupTime) : undefined,
-          totalProductionTime: ph.totalProductionTime != null ? Number(ph.totalProductionTime) : undefined,
-        });
-        continue;
-      }
-
-      // update mode delete: send tombstone
-      if (forUpdate && (ph.__deleted || phaseId === "")) {
-        outgoingByPos.set(pos, {
-          phaseId: "",
-          position: String(pos),
-          setupTime: 0,
-          productionTimePerPiece: 0,
-        });
-        continue;
-      }
-
-      // normal phase
-      if (phaseId !== "") {
-        outgoingByPos.set(pos, {
-          phaseId,
-          position: String(pos),
-          setupTime: Number(ph.setupTime || 0),
-          productionTimePerPiece: Number(ph.productionTimePerPiece || 0),
-          totalSetupTime: ph.totalSetupTime != null ? Number(ph.totalSetupTime) : undefined,
-          totalProductionTime: ph.totalProductionTime != null ? Number(ph.totalProductionTime) : undefined,
-        });
-      }
-    }
-
-    // CRITICAL: overwrite every original snapshot position with either a phase or a tombstone
-    if (forUpdate) {
-      for (const pos of snapshotPositions) {
-        if (!outgoingByPos.has(pos)) {
-          outgoingByPos.set(pos, {
-            phaseId: "",
-            position: String(pos),
-            setupTime: 0,
-            productionTimePerPiece: 0,
-          });
-        }
-      }
-    }
-
-    const phases = Array.from(outgoingByPos.values()).sort(
-      (a, b) => Number(normPos(a.position)) - Number(normPos(b.position))
-    );
+    // send only real phases user currently sees
+    const phases = ensurePhaseUids(p.phases || [])
+      .filter((ph: any) => !ph.__deleted)
+      .filter((ph: any) => String(ph.phaseId || "").trim() !== "")
+      .map((ph: any) => ({
+        phaseId: String(ph.phaseId).trim(),
+        position: String(ph.position ?? ""),
+        setupTime: Number(ph.setupTime || 0),
+        productionTimePerPiece: Number(ph.productionTimePerPiece || 0),
+        totalSetupTime: ph.totalSetupTime != null ? Number(ph.totalSetupTime) : undefined,
+        totalProductionTime: ph.totalProductionTime != null ? Number(ph.totalProductionTime) : undefined,
+      }))
+      .sort((a: any, b: any) => posNum(a.position) - posNum(b.position));
 
     return {
       id: p.id,
@@ -739,6 +664,7 @@ const OrderKeeperView: React.FC = () => {
       phases,
     };
   };
+
 
   const handleSave = async () => {
     if (!orderNumber.trim() || sheets.length === 0) return;
@@ -757,7 +683,9 @@ const OrderKeeperView: React.FC = () => {
           name: base.name || sheet.productId,
           materials: (base.materials || []).map((m: any) => {
             const total =
-              m.totalQuantity != null ? parseFloat(String(m.totalQuantity)) : (m.quantityPerPiece || 0) * qty;
+              m.totalQuantity != null
+                ? parseFloat(String(m.totalQuantity))
+                : (m.quantityPerPiece || 0) * qty;
             return {
               materialId: m.materialId,
               quantityPerPiece: qty > 0 ? total / qty : 0,
@@ -794,7 +722,7 @@ const OrderKeeperView: React.FC = () => {
           productId: s.productId,
           quantity: parseInt(s.quantity, 10),
           orderNumber,
-          productDef: toProductDefDTO(s.productDef as any, { forUpdate: mode === "update" }),
+          productDef: toProductDefDTO(s.productDef as any),
         }));
 
       if (sheetDtos.length === 0) return;
@@ -803,25 +731,16 @@ const OrderKeeperView: React.FC = () => {
       if (mode === "update") {
         const sh = sheetDtos[0];
 
-        const r: any = await api.updateProductionSheetForOrder(
-          orderNumber.trim(),
-          sh.productionSheetNumber,
-          {
-            quantity: sh.quantity,
-            productDef: sh.productDef,
-          }
-        );
+        const r: any = await api.updateProductionSheetForOrder(orderNumber.trim(), sh.productionSheetNumber, {
+          quantity: sh.quantity,
+          productDef: sh.productDef,
+        });
 
-        // Backend returns lockedPositions
         const lockedPositions: string[] = Array.isArray(r.lockedPositions) ? r.lockedPositions : [];
-
         alert(t("orderkeeper.alerts.updatedSuccess"));
 
         // Refresh sheet from backend
-        const refreshed: any = await api.getProductionSheetForOrder(
-          orderNumber.trim(),
-          sh.productionSheetNumber
-        );
+        const refreshed: any = await api.getProductionSheetForOrder(orderNumber.trim(), sh.productionSheetNumber);
 
         const snap = refreshed.productSnapshot || null;
         const qty = Number(refreshed.quantity || 0);
@@ -843,9 +762,7 @@ const OrderKeeperView: React.FC = () => {
               };
             })();
 
-        const snapshotPhasePositions = (base.phases || [])
-          .map((p: any) => normPos(p.position))
-          .filter(Boolean);
+        const snapshotPhasePositions = (base.phases || []).map((p: any) => normPos(p.position)).filter(Boolean);
 
         const productDef: ProductDefWithMeta = {
           id: base.id,
@@ -871,7 +788,7 @@ const OrderKeeperView: React.FC = () => {
             return {
               ...p,
               __uid: p.__uid || makeUid(),
-              __deleted: String(p.phaseId || "").trim() === "", // hide tombstones if any
+              __deleted: String(p.phaseId || "").trim() === "",
               phaseId: p.phaseId,
               setupTime: setup,
               totalSetupTime: setup,
@@ -978,11 +895,9 @@ const OrderKeeperView: React.FC = () => {
 
       if (mode === "reprint") {
         const sheetsFromApi = await api.getSheetsByOrderId(orderNumber.trim());
-
         if (!sheetsFromApi || sheetsFromApi.length === 0) {
           throw new Error(t("orderkeeper.errors.noSheetsForOrder"));
         }
-
         setExistingSheetsForReprint(sheetsFromApi);
         setOrderLocked(true);
         return;
@@ -999,15 +914,21 @@ const OrderKeeperView: React.FC = () => {
     try {
       const logs: any[] = await api.getPhaseLogs();
       const locked = new Set<string>();
+      let hasAnyLog = false;
+
       for (const l of logs || []) {
         const o = String(l.orderNumber ?? l.order_number ?? "").trim();
         const s = String(l.productionSheetNumber ?? l.production_sheet_number ?? "").trim();
+        if (o !== orderNum || s !== sheetNum) continue;
+
+        hasAnyLog = true;
         const pos = String(l.position ?? "").trim();
-        if (o === orderNum && s === sheetNum && pos) locked.add(pos);
+        if (pos) locked.add(pos);
       }
-      return Array.from(locked);
+
+      return { lockedPositions: Array.from(locked), materialsLocked: hasAnyLog };
     } catch {
-      return [];
+      return { lockedPositions: [], materialsLocked: false };
     }
   };
 
@@ -1042,19 +963,14 @@ const OrderKeeperView: React.FC = () => {
             };
           })();
 
-      const lockedPositions = await getLockedPositionsForSheet(orderNum, sheetNum);
-
-      const snapshotPhasePositions = (base.phases || [])
-        .map((p: any) => normPos(p.position))
-        .filter(Boolean);
+      const locks = await getLockedPositionsForSheet(orderNum, sheetNum);
 
       const productDef: ProductDefWithMeta = {
         id: base.id,
         name: base.name,
         quantity: qty,
-        __snapshotPhasePositions: Array.from(new Set(snapshotPhasePositions)),
-        __lockedPositions: lockedPositions,
-        __materialsLocked: lockedPositions.length > 0,
+        __lockedPositions: locks.lockedPositions,
+        __materialsLocked: locks.materialsLocked,
         materials: (base.materials || []).map((m: any, i: number) => {
           const qpp = Number(m.quantityPerPiece ?? 0);
           const total = Number(m.totalQuantity ?? qpp * qty);
@@ -1072,7 +988,7 @@ const OrderKeeperView: React.FC = () => {
           return {
             ...p,
             __uid: p.__uid || makeUid(),
-            __deleted: String(p.phaseId || "").trim() === "", // hide tombstones if any
+            __deleted: String(p.phaseId || "").trim() === "",
             phaseId: p.phaseId,
             setupTime: setup,
             totalSetupTime: setup,
@@ -1099,6 +1015,61 @@ const OrderKeeperView: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // ============================
+  // AUTO CONFIRM (no buttons)
+  // ============================
+  useEffect(() => {
+    if (orderLocked) return;
+    if (mode === "idle") return;
+
+    const ord = orderNumber.trim();
+    if (!ord) return;
+
+    // avoid repeating the same confirm
+    if (lastConfirmedOrderRef.current?.mode === mode && lastConfirmedOrderRef.current?.order === ord) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      // re-check inside debounce
+      const ordNow = orderNumber.trim();
+      if (lastConfirmedOrderRef.current?.mode === mode && lastConfirmedOrderRef.current?.order === ordNow) return;
+
+      lastConfirmedOrderRef.current = { mode, order: ordNow };
+      await confirmOrder();
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderNumber, mode, orderLocked]);
+
+  useEffect(() => {
+    if (!orderLocked) return;
+    if (mode !== "update") return;
+    if (sheetLocked) return;
+
+    const ord = orderNumber.trim();
+    const sh = targetSheetNumber.trim();
+    if (!ord || !sh) return;
+
+    if (lastConfirmedSheetRef.current?.order === ord && lastConfirmedSheetRef.current?.sheet === sh) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      const ordNow = orderNumber.trim();
+      const shNow = targetSheetNumber.trim();
+      if (!ordNow || !shNow || sheetLocked || mode !== "update") return;
+      if (lastConfirmedSheetRef.current?.order === ordNow && lastConfirmedSheetRef.current?.sheet === shNow) return;
+
+      lastConfirmedSheetRef.current = { order: ordNow, sheet: shNow };
+      await confirmTargetSheet();
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderLocked, mode, sheetLocked, targetSheetNumber]);
 
   const handleToggleReprintSelection = (sheetId: string) => {
     setSelectedSheetsToReprint((prev) =>
@@ -1165,19 +1136,13 @@ const OrderKeeperView: React.FC = () => {
             </label>
           </div>
 
-          {orderLocked ? (
-            <button onClick={resetAll} className="btn-secondary">
-              {t("orderkeeper.changeMode")}
-            </button>
-          ) : (
-            <button onClick={resetAll} className="btn-secondary">
-              {t("common.reset")}
-            </button>
-          )}
+          <button onClick={resetAll} className="btn-secondary">
+            {orderLocked ? t("orderkeeper.changeMode") : t("common.reset")}
+          </button>
         </div>
       </div>
 
-      {/* STEP 2: ORDER NUMBER */}
+      {/* STEP 2: ORDER NUMBER (auto-confirm) */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-1">{t("orderkeeper.orderNumber")}</label>
         <div className="flex items-center gap-3">
@@ -1185,23 +1150,23 @@ const OrderKeeperView: React.FC = () => {
             type="text"
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (!orderLocked && mode !== "idle" && orderNumber.trim()) {
+                  lastConfirmedOrderRef.current = { mode, order: orderNumber.trim() };
+                  confirmOrder();
+                }
+              }
+            }}
             placeholder={t("orderkeeper.orderNumberPlaceholder")}
             className="input-style flex-grow"
             disabled={mode === "idle" || orderLocked}
           />
-          {!orderLocked ? (
-            <button onClick={confirmOrder} disabled={mode === "idle" || !orderNumber.trim()} className="btn-secondary">
-              {t("common.confirm")}
-            </button>
-          ) : (
-            <button onClick={resetAll} className="btn-secondary">
-              {t("orderkeeper.changeMode")}
-            </button>
-          )}
         </div>
       </div>
 
-      {/* STEP 2.5: SHEET NUMBER (update mode) */}
+      {/* STEP 2.5: SHEET NUMBER (update mode) (auto-confirm) */}
       {orderLocked && mode === "update" && !sheetLocked && (
         <div className="mb-6 p-4 border rounded-md bg-gray-50">
           <label className="block text-sm font-medium text-gray-700 mb-1">{t("orderkeeper.productionSheetNumberLabel")}</label>
@@ -1210,12 +1175,18 @@ const OrderKeeperView: React.FC = () => {
               type="text"
               value={targetSheetNumber}
               onChange={(e) => setTargetSheetNumber(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (targetSheetNumber.trim()) {
+                    lastConfirmedSheetRef.current = { order: orderNumber.trim(), sheet: targetSheetNumber.trim() };
+                    confirmTargetSheet();
+                  }
+                }
+              }}
               placeholder={t("orderkeeper.sheetNumber")}
               className="input-style flex-grow"
             />
-            <button onClick={confirmTargetSheet} disabled={!targetSheetNumber.trim()} className="btn-secondary">
-              {t("common.confirm")}
-            </button>
           </div>
         </div>
       )}
@@ -1300,9 +1271,7 @@ const OrderKeeperView: React.FC = () => {
       {/* REPRINT UI */}
       {canProceed && mode === "reprint" && (
         <div className="border-t pt-4">
-          <h3 className="text-xl font-semibold text-gray-700 mb-4">
-            {t("orderkeeper.reprintTitle", { orderNumber })}
-          </h3>
+          <h3 className="text-xl font-semibold text-gray-700 mb-4">{t("orderkeeper.reprintTitle", { orderNumber })}</h3>
 
           {existingSheetsForReprint.length > 0 ? (
             <>
@@ -1314,9 +1283,7 @@ const OrderKeeperView: React.FC = () => {
                         <input
                           type="checkbox"
                           onChange={(e) =>
-                            setSelectedSheetsToReprint(
-                              e.target.checked ? existingSheetsForReprint.map((s) => s.id) : []
-                            )
+                            setSelectedSheetsToReprint(e.target.checked ? existingSheetsForReprint.map((s) => s.id) : [])
                           }
                         />
                       </th>
@@ -1341,9 +1308,7 @@ const OrderKeeperView: React.FC = () => {
                             onChange={() => handleToggleReprintSelection(sheet.id)}
                           />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {sheet.productionSheetNumber}
-                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{sheet.productionSheetNumber}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{sheet.productId}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{sheet.quantity}</td>
                       </tr>
@@ -1358,8 +1323,7 @@ const OrderKeeperView: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm font-medium text-gray-600 mb-2">
-                      {t("orderkeeper.printSelected")} ({selectedSheetsToReprint.length}{" "}
-                      {t("orderkeeper.selectedCountSuffix")})
+                      {t("orderkeeper.printSelected")} ({selectedSheetsToReprint.length} {t("orderkeeper.selectedCountSuffix")})
                     </p>
                     <div className="flex flex-col gap-2">
                       <button
@@ -1381,8 +1345,7 @@ const OrderKeeperView: React.FC = () => {
 
                   <div>
                     <p className="text-sm font-medium text-gray-600 mb-2">
-                      {t("orderkeeper.printAll")} ({existingSheetsForReprint.length}{" "}
-                      {t("orderkeeper.totalCountSuffix")})
+                      {t("orderkeeper.printAll")} ({existingSheetsForReprint.length} {t("orderkeeper.totalCountSuffix")})
                     </p>
                     <div className="flex flex-col gap-2">
                       <button onClick={() => printSheets(existingSheetsForReprint, "sticker")} className="btn-primary text-sm">
