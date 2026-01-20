@@ -16,9 +16,18 @@ export const WAREHOUSE_POSITIONS = [
   1, 2, 3, 4, 5, 6, 7, 8, 9,
 ] as const;
 
-export const ALL_ALLOWED_VIEWS: AllowedView[] = ['operator', 'search', 'manager', 'batch-create', 'transactions', 'orders', 'scan-product-sheet', 'daily-logs'];
+export const ALL_ALLOWED_VIEWS: AllowedView[] = [
+  "operator","search","manager","batch-create","transactions","orders",
+  "scan-product-sheet","daily-logs",
+  "phase-manager","pdf-import","live-phases","history","account","dead-time","frames",
+  "material-use"
+];
 export const USER_SELECTABLE_TABS: AllowedView[] = ['operator', 'search', 'batch-create', 'transactions'];
-export const ALL_ROLES: UserRole[] = ['operator', 'manager', 'orderkeeper', 'machineoperator', 'infraoperator', 'storekeeper', 'framekeeper'];
+export const ALL_ROLES: UserRole[] = [
+  "operator","manager","orderkeeper","machineoperator",
+  "infraoperator","storekeeper","framekeeper",
+  "materiallogger","warehousemanager"
+];
 
 // New Constants for Production Phases
 export const PHASES: Phase[] = [

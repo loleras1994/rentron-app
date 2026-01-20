@@ -21,6 +21,7 @@ const PhaseManagerView: React.FC = () => {
       setPhases(data);
     } catch (err) {
       console.error(err);
+      alert(t("phaseManager.loadingError"));
     } finally {
       setIsLoading(false);
     }
@@ -32,6 +33,7 @@ const PhaseManagerView: React.FC = () => {
 
   const handleAddPhase = async () => {
     if (!newPhase.id.trim() || !newPhase.name.trim()) return;
+
     await api.createPhase(newPhase.id.trim(), newPhase.name.trim());
     setNewPhase({ id: "", name: "" });
     await loadPhases();
@@ -39,13 +41,15 @@ const PhaseManagerView: React.FC = () => {
 
   const handleUpdatePhase = async () => {
     if (!editingPhase) return;
+
     await api.updatePhase(editingPhase.id, editingPhase.name);
     setEditingPhase(null);
     await loadPhases();
   };
 
   const handleDeletePhase = async (id: string) => {
-    if (!window.confirm("Delete this phase?")) return;
+    if (!window.confirm(t("phaseManager.confirmDelete"))) return;
+
     await api.deletePhase(id);
     await loadPhases();
   };
@@ -53,48 +57,63 @@ const PhaseManagerView: React.FC = () => {
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg max-w-3xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">
-        {t("infrauser.phaseManagerTitle") || "Phase Manager"}
+        {t("phaseManager.title")}
       </h2>
 
       {isLoading && <p>{t("common.loading")}</p>}
 
       <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-2">{t("infrauser.addNewPhase") || "Add new phase"}</h3>
+        <h3 className="text-lg font-semibold mb-2">
+          {t("phaseManager.addNewTitle")}
+        </h3>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input
             type="text"
-            placeholder="Phase Code (e.g. cutting)"
+            placeholder={t("phaseManager.placeholders.code")}
             value={newPhase.id}
             onChange={(e) => setNewPhase({ ...newPhase, id: e.target.value })}
             className="input-style"
           />
+
           <input
             type="text"
-            placeholder="Phase Name (e.g. Cutting)"
+            placeholder={t("phaseManager.placeholders.name")}
             value={newPhase.name}
             onChange={(e) => setNewPhase({ ...newPhase, name: e.target.value })}
             className="input-style"
           />
+
           <button onClick={handleAddPhase} className="btn-primary">
-            {t("common.add") || "Add"}
+            {t("common.add")}
           </button>
         </div>
       </div>
 
-      <h3 className="text-lg font-semibold mb-2">{t("infrauser.allPhases") || "Existing Phases"}</h3>
+      <h3 className="text-lg font-semibold mb-2">
+        {t("phaseManager.listTitle")}
+      </h3>
 
       <table className="min-w-full border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border text-left">Code</th>
-            <th className="px-4 py-2 border text-left">Name</th>
-            <th className="px-4 py-2 border text-center">Actions</th>
+            <th className="px-4 py-2 border text-left">
+              {t("phaseManager.table.code")}
+            </th>
+            <th className="px-4 py-2 border text-left">
+              {t("phaseManager.table.name")}
+            </th>
+            <th className="px-4 py-2 border text-center">
+              {t("phaseManager.table.actions")}
+            </th>
           </tr>
         </thead>
+
         <tbody>
           {phases.map((p) => (
             <tr key={p.id} className="border-t">
               <td className="px-4 py-2">{p.id}</td>
+
               <td className="px-4 py-2">
                 {editingPhase?.id === p.id ? (
                   <input
@@ -108,10 +127,14 @@ const PhaseManagerView: React.FC = () => {
                   p.name
                 )}
               </td>
+
               <td className="px-4 py-2 text-center">
                 {editingPhase?.id === p.id ? (
-                  <button onClick={handleUpdatePhase} className="btn-primary text-sm">
-                    Save
+                  <button
+                    onClick={handleUpdatePhase}
+                    className="btn-primary text-sm"
+                  >
+                    {t("phaseManager.buttons.save")}
                   </button>
                 ) : (
                   <div className="flex justify-center gap-2">
@@ -119,13 +142,14 @@ const PhaseManagerView: React.FC = () => {
                       onClick={() => setEditingPhase(p)}
                       className="btn-secondary text-sm"
                     >
-                      Edit
+                      {t("phaseManager.buttons.edit")}
                     </button>
+
                     <button
                       onClick={() => handleDeletePhase(p.id)}
                       className="btn-secondary text-sm text-red-600"
                     >
-                      Delete
+                      {t("phaseManager.buttons.delete")}
                     </button>
                   </div>
                 )}

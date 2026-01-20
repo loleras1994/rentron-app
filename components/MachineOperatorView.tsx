@@ -57,7 +57,7 @@ const buildProductionCode = (sheet: ProductionSheetForOperator | null): string =
 
 
 /* ---------------------------------------------------------
-   SAFELY RESOLVE MATERIALS
+   SAFELY RESOLVE MATERIALS - FRAMES
 --------------------------------------------------------- */
 const resolveMaterialsForPhase = (
   sheet: ProductionSheetForOperator | null,
@@ -87,6 +87,21 @@ const resolveMaterialsForPhase = (
       wm.materialCode &&
       candidates.has(String(wm.materialCode).toLowerCase()) &&
       (Number(wm.currentQuantity) || 0) > 0
+  );
+};
+
+const resolveFramesForProduct = (
+  sheet: ProductionSheetForOperator | null,
+  frames: any[]
+) => {
+  if (!sheet) return [];
+
+  const productId = String(sheet.productId);
+
+  return frames.filter(
+    (f) =>
+      Array.isArray(f.productIds) &&
+      f.productIds.includes(productId)
   );
 };
 
@@ -191,6 +206,7 @@ const MachineOperatorView: React.FC = () => {
 
 
   const [materialInfo, setMaterialInfo] = useState<Material[] | null>(null);
+  const [frameInfo, setFrameInfo] = useState<any[] | null>(null);
   const [viewState, setViewState] =
     useState<"idle" | "scanning" | "details">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -329,25 +345,6 @@ const MachineOperatorView: React.FC = () => {
         );
         return;
       }
-  /* ---------------------------------------------------------
-      const hasPhase2or30 = data.product?.phases?.some((p: any) =>
-        ["2", "30"].includes(String(p.phaseId))
-      );
-
-      const phase2or30Done = data.phaseLogs.some(
-        (l) =>
-          ["2", "30"].includes(String(l.phaseId)) &&
-          l.endTime &&
-          (l.quantityDone || 0) >= data.quantity
-      );
-
-      if (hasPhase2or30 && !phase2or30Done) {
-        const freshMaterials = await api.getMaterials();
-        setMaterialInfo(resolveMaterialsForPhase(data, freshMaterials));
-      } else {
-        setMaterialInfo(null);
-      }
-   --------------------------------------------------------- */
       setViewState("details");
     } catch (err) {
       setError((err as Error).message);
@@ -393,6 +390,25 @@ const MachineOperatorView: React.FC = () => {
     return Math.max(0, upstreamDone - alreadyDoneHere);
   };
 
+  const canStartPhase = (phaseId: string): boolean => {
+    if (!sheet) return false;
+
+    const phasesArr = sheet.product?.phases ?? [];
+    const idx = phasesArr.findIndex((p: any) => String(p.phaseId) === String(phaseId));
+    if (idx < 0) return false;
+
+    // first phase is always startable (upstream = sheet.quantity)
+    if (idx === 0) return true;
+
+    const prevId = String(phasesArr[idx - 1].phaseId);
+    const prevDone = phaseStatuses.get(prevId)?.done || 0;
+
+    const myDone = phaseStatuses.get(String(phaseId))?.done || 0;
+    const canStartQty = Math.max(0, prevDone - myDone);
+
+    return canStartQty > 0;
+  };
+
   /* ---------------------------------------------------------
      SAFE STATUS MAP
   --------------------------------------------------------- */
@@ -429,6 +445,7 @@ const MachineOperatorView: React.FC = () => {
   useEffect(() => {
     if (!sheet) {
       setMaterialInfo(null);
+      setFrameInfo(null);
       return;
     }
 
@@ -465,6 +482,36 @@ const MachineOperatorView: React.FC = () => {
         console.error("material info refresh failed:", e);
       }
     })();
+
+
+    // ===== FRAME INFO (PHASE 21) =====
+    const hasPhase21 = (sheet.product?.phases ?? []).some(
+      (p: any) => String(p.phaseId) === "21"
+    );
+
+    if (!hasPhase21) {
+      setFrameInfo(null);
+    } else {
+      const done21 = phaseStatuses.get("21")?.done || 0;
+      const phase21Completed = done21 >= sheet.quantity;
+
+      // NEW: only show when phase 21 is actually startable/unlocked
+      const phase21Startable = canStartPhase("21");
+
+      if (phase21Completed || !phase21Startable) {
+        setFrameInfo(null);
+      } else {
+        (async () => {
+          try {
+            const allFrames = await api.getFrames();
+            const linkedFrames = resolveFramesForProduct(sheet, allFrames);
+            setFrameInfo(linkedFrames.length ? linkedFrames : null);
+          } catch (e) {
+            console.error("frame info refresh failed:", e);
+          }
+        })();
+      }
+    }
 
     return () => {
       cancelled = true;
@@ -822,23 +869,7 @@ const MachineOperatorView: React.FC = () => {
       setViewState("idle");
     };
 
-  /* ---------------------------------------------------------
-     LOADING
- 
-  if (isLoading)
-    return (
-      <>
-        <ConfirmModal
-          open={modalData.open}
-          title={modalData.title}
-          message={modalData.message}
-          buttons={modalData.buttons}
-          onClose={closeModal}
-        />
-        <div className="text-center p-8">{t("common.loading")}</div>
-      </>
-    );
- --------------------------------------------------------- */
+
   /* ---------------------------------------------------------
      SCANNING
   --------------------------------------------------------- */
@@ -984,6 +1015,39 @@ const MachineOperatorView: React.FC = () => {
                       {mat.location
                         ? `${mat.location.area}, Pos ${mat.location.position}`
                         : t("common.na")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* FRAME INFO */}
+          {Array.isArray(frameInfo) && frameInfo.length > 0 && (
+            <div className="p-4 my-4 border rounded-md bg-emerald-50">
+              <h4 className="font-semibold mb-2">
+                {t("machineOperator.frameInfo") ?? "Frame Information"}
+              </h4>
+
+              <div className="space-y-3">
+                {frameInfo.map((f) => (
+                  <div key={f.frameId} className="p-3 bg-white border rounded-md">
+                    <p>
+                      <strong>Frame:</strong> FRAME {f.frameId}
+                    </p>
+                    <p>
+                      <strong>Position:</strong>{" "}
+                      {f.position ?? "—"}
+                    </p>
+                    <p>
+                      <strong>Quality:</strong>{" "}
+                      {f.quality ?? "—"}
+                    </p>
+                    <p>
+                      <strong>Size:</strong>{" "}
+                      {f.widthCm && f.heightCm
+                        ? `${f.widthCm} × ${f.heightCm} cm`
+                        : "—"}
                     </p>
                   </div>
                 ))}

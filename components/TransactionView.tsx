@@ -43,6 +43,9 @@ const TransactionView: React.FC = () => {
                   {t("transactions.table.materialName")}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Qty (from → to)
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t("transactions.table.change")}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -70,7 +73,9 @@ const TransactionView: React.FC = () => {
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
                       {tx.materialName}
                     </td>
-
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {tx.fromQty != null && tx.toQty != null ? `${tx.fromQty} → ${tx.toQty}` : "—"}
+                    </td>
                     <td
                       className={`px-4 py-4 whitespace-nowrap text-sm font-semibold ${
                         delta > 0 ? "text-green-600" : delta < 0 ? "text-red-600" : "text-gray-500"

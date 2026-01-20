@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import type { Material, QrData, ActionType } from "../src/types";
 import { useWarehouse } from "../hooks/useWarehouse";
 import Scanner from "./Scanner";
 import ActionModal from "./ActionModal";
 import { CameraIcon } from "./Icons";
 import { useTranslation } from "../hooks/useTranslation";
+import { AuthContext } from "../context/AuthContext";
+import * as api from "../api/client";
 
 const OperatorView: React.FC = () => {
   const [scannedData, setScannedData] = useState<QrData | null>(null);
@@ -12,25 +14,36 @@ const OperatorView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [action, setAction] = useState<ActionType | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Quantity adjust UI (warehouse manager only)
+  const [isAdjustingQty, setIsAdjustingQty] = useState(false);
+  const [newQty, setNewQty] = useState<string>("");
+  const [isSavingQty, setIsSavingQty] = useState(false);
 
   const { findMaterialById, findMaterialByIdOnline } = useWarehouse();
   const { t } = useTranslation();
-  
-  const hasLocation = material?.location !== null && material?.location !== undefined;       
-  const isFullyConsumed = material ? material.currentQuantity <= 0 : false;
 
+  const auth = useContext(AuthContext);
+  const isWarehouseManager =
+    !!auth?.user?.roles?.some(r => r === "warehousemanager" || r === "manager");
+  const hasLocation = material?.location !== null && material?.location !== undefined;
 
   useEffect(() => {
     if (!scannedData) return;
 
-    (async () => {
-      // 🔍 1) Try LOCAL cache first
-      let foundMaterial = findMaterialById(scannedData.id);
+    let cancelled = false;
 
-      // 🔍 2) If not found, try BACKEND lookup
+    (async () => {
+      // 1) ALWAYS fetch from backend first (fresh DB data)
+      let foundMaterial = await findMaterialByIdOnline(scannedData.id);
+
+      // 2) If backend fails (offline/etc), fallback to local cache
       if (!foundMaterial) {
-        foundMaterial = await findMaterialByIdOnline(scannedData.id);
+        foundMaterial = findMaterialById(scannedData.id);
       }
+
+      if (cancelled) return;
 
       if (foundMaterial) {
         if (foundMaterial.currentQuantity > 0) {
@@ -50,7 +63,12 @@ const OperatorView: React.FC = () => {
         setMaterial(null);
       }
     })();
-  }, [scannedData, findMaterialById, findMaterialByIdOnline, t]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [scannedData, refreshKey, findMaterialByIdOnline, findMaterialById, t]);
+
 
   const handleScanSuccess = (decodedText: string) => {
     try {
@@ -77,11 +95,59 @@ const OperatorView: React.FC = () => {
     setError(null);
     setIsScanning(false);
     setAction(null);
+
+    setIsAdjustingQty(false);
+    setNewQty("");
+    setIsSavingQty(false);
   };
 
   const handleActionComplete = () => {
     reset();
   };
+
+  const openAdjustQty = () => {
+    if (!material) return;
+    setNewQty(String(material.currentQuantity ?? ""));
+    setIsAdjustingQty(true);
+  };
+
+  const closeAdjustQty = () => {
+    setIsAdjustingQty(false);
+    setNewQty("");
+    setIsSavingQty(false);
+  };
+
+  const saveAdjustedQty = async () => {
+    if (!material) return;
+
+    const parsed = Number(newQty);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      alert(t("operator.invalidQuantity"));
+      return;
+    }
+
+    const delta = parsed - Number(material.currentQuantity || 0);
+
+    setIsSavingQty(true);
+    try {
+      await api.adjustMaterialQuantity(material.id, delta, "MANUAL_ADJUST");
+
+      // ✅ reload from backend so you get full merged history
+      const fresh = await findMaterialByIdOnline(material.id);
+      if (fresh) setMaterial(fresh);
+
+      setRefreshKey((k) => k + 1);
+
+      alert(t("operator.quantityUpdated"));
+      closeAdjustQty();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || t("operator.quantityUpdateFailed"));
+    } finally {
+      setIsSavingQty(false);
+    }
+  };
+
 
   if (isScanning) {
     return (
@@ -117,10 +183,11 @@ const OperatorView: React.FC = () => {
           {error && <p className="mt-4 text-red-500 bg-red-100 p-3 rounded-md">{error}</p>}
         </div>
       ) : (
-        <div>
+        <div key={refreshKey}>
           <h3 className="text-xl font-semibold text-gray-800">
             {t("operator.materialDetailsTitle")}
           </h3>
+
           <div className="mt-4 space-y-2 text-gray-700 bg-gray-50 p-4 rounded-md">
             <p>
               <strong>{t("operator.materialCode")}:</strong>{" "}
@@ -129,60 +196,69 @@ const OperatorView: React.FC = () => {
               </span>
             </p>
             <p>
-              <strong>{t("operator.id")}:</strong>{" "}
-              <span className="text-xs font-mono">{material.id}</span>
-            </p>
-            <p>
               <strong>{t("operator.remainingQuantity")}:</strong>{" "}
               {material.currentQuantity} / {material.initialQuantity}
             </p>
-			<p>
-			  <strong>{t("common.location")}:</strong>{" "}
-			  {material && material.location
-				? `${material.location.area}, Position ${material.location.position}`
-				: t("common.na")}
-			</p>
+            <p>
+              <strong>{t("common.location")}:</strong>{" "}
+              {material && material.location
+                ? `${material.location.area}, Position ${material.location.position}`
+                : t("common.na")}
+            </p>
           </div>
 
           <div className="mt-6">
             <h4 className="font-semibold mb-3">{t("operator.chooseAction")}:</h4>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-				<button
-				  onClick={() => setAction("CONSUMPTION")}
-				  className="bg-red-500 text-white py-3 px-4 rounded-md hover:bg-red-600"
-				  disabled={!hasLocation}
-				>
-				  {t("operator.fullConsumption")}
-				</button>
+              <button
+                onClick={() => setAction("CONSUMPTION")}
+                className="bg-red-500 text-white py-3 px-4 rounded-md hover:bg-red-600"
+                disabled={!hasLocation}
+              >
+                {t("operator.fullConsumption")}
+              </button>
 
-				<button
-				  onClick={() => setAction("PLACEMENT")}
-				  className="bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-600"
-				  disabled={hasLocation}
-				>
-				  {t("operator.placement")}
-				</button>
+              <button
+                onClick={() => setAction("PLACEMENT")}
+                className="bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-600"
+                disabled={hasLocation}
+              >
+                {t("operator.placement")}
+              </button>
 
-				<button
-				  onClick={() => setAction("MOVEMENT")}
-				  className="bg-yellow-500 text-white py-3 px-4 rounded-md hover:bg-yellow-600"
-				  disabled={!hasLocation}
-				>
-				  {t("operator.movement")}
-				</button>
+              <button
+                onClick={() => setAction("MOVEMENT")}
+                className="bg-yellow-500 text-white py-3 px-4 rounded-md hover:bg-yellow-600"
+                disabled={!hasLocation}
+              >
+                {t("operator.movement")}
+              </button>
 
-				<button
-				  onClick={() => setAction("PARTIAL_CONSUMPTION")}
-				  className="bg-green-500 text-white py-3 px-4 rounded-md hover:bg-green-600"
-				  disabled={!hasLocation}
-				>
-				  {t("operator.partialConsumption")}
-				</button>
+              <button
+                onClick={() => setAction("PARTIAL_CONSUMPTION")}
+                className="bg-green-500 text-white py-3 px-4 rounded-md hover:bg-green-600"
+                disabled={!hasLocation}
+              >
+                {t("operator.partialConsumption")}
+              </button>
+
+              {/* Warehouse Manager extra action */}
+              {isWarehouseManager && (
+                <button
+                  onClick={openAdjustQty}
+                  className="bg-gray-800 text-white py-3 px-4 rounded-md hover:bg-black md:col-span-2"
+                >
+                  {t("operator.adjustQuantity")}
+                </button>
+              )}
             </div>
+
             <p className="text-xs text-gray-500 mt-2 text-center">
               {t("operator.actionsDisabledHint")}
             </p>
           </div>
+
           <button
             onClick={reset}
             className="mt-6 w-full text-indigo-600 hover:text-indigo-800 font-medium"
@@ -199,6 +275,55 @@ const OperatorView: React.FC = () => {
           onClose={() => setAction(null)}
           onComplete={handleActionComplete}
         />
+      )}
+
+      {/* Adjust Quantity Modal */}
+      {isAdjustingQty && material && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-5">
+            <h3 className="text-lg font-bold text-gray-800 mb-3">
+              {t("operator.adjustQuantityTitle")}
+            </h3>
+
+            <div className="text-sm text-gray-700 mb-3">
+              <div>
+                <b>{t("operator.materialCode")}:</b>{" "}
+                <span className="font-mono">{material.materialCode}</span>
+              </div>
+              <div>
+                <b>{t("operator.remainingQuantity")}:</b> {material.currentQuantity}
+              </div>
+            </div>
+
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t("operator.newTotalQuantity")}
+            </label>
+            <input
+              value={newQty}
+              onChange={(e) => setNewQty(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md"
+              inputMode="numeric"
+            />
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={closeAdjustQty}
+                disabled={isSavingQty}
+                className="flex-1 py-2 rounded-md border border-gray-300 text-gray-700 disabled:opacity-60"
+              >
+                {t("common.cancel")}
+              </button>
+
+              <button
+                onClick={saveAdjustedQty}
+                disabled={isSavingQty}
+                className="flex-1 py-2 rounded-md text-white bg-indigo-600 disabled:bg-indigo-400"
+              >
+                {isSavingQty ? t("common.saving") : t("common.confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

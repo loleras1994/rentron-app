@@ -13,7 +13,9 @@ import type {
   ProductionSheetForOperator,
   Frame, 
   FramePosition, 
-  FrameQuality
+  FrameQuality,
+  MaterialUseLog, 
+  MaterialUseUnit
 } from "../src/types";
 /*import { mapPhaseLog } from "../src/mapPhaseLog";*/
 import { mapDailyLog } from "../src/mapDailyLog";
@@ -28,6 +30,7 @@ const API_URL = "https://api.rentron.gr";
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -51,23 +54,26 @@ const getTabsForRoles = (roles: UserRole[]): AllowedView[] => {
   if (roles.includes("manager")) {
     [
       "orders",
-      "scan-product-sheet",
       "daily-logs",
-      "phase-manager",
+      "pdf-import",
       "batch-create",
-      "frames",
+      "scan-product-sheet",
+      "dead-time",
+      "material-use",
       "operator",
-      "search",
-      "transactions",
-      "live-phases",
-      "manager",
+      "search",      
+      "phase-manager",
+      "transactions",    
+      "manager", 
+      "live-phases", 
+      "frames",  
     ].forEach((t) => tabs.add(t as AllowedView));
   }
 
   if (roles.includes("infraoperator")) {
     tabs.add("daily-logs");
-    tabs.add("phase-manager");
-    tabs.add("live-phases");
+    tabs.add("pdf-import");
+    tabs.add("batch-create");
   }
   if (roles.includes("machineoperator")) {
     tabs.add("scan-product-sheet");
@@ -75,11 +81,10 @@ const getTabsForRoles = (roles: UserRole[]): AllowedView[] => {
   }
   if (roles.includes("orderkeeper")) {
     tabs.add("orders");
-    tabs.add("pdf-import");
+    tabs.add("daily-logs");
   }
   if (roles.includes("storekeeper")) {
-    tabs.add("batch-create");
-    tabs.add("transactions");
+    tabs.add("live-phases");
   }
   if (roles.includes("operator")) {
     tabs.add("operator");
@@ -88,7 +93,14 @@ const getTabsForRoles = (roles: UserRole[]): AllowedView[] => {
   if (roles.includes("framekeeper")) {
     tabs.add("frames");
   }
-
+  if (roles.includes("materiallogger")) {
+    tabs.add("material-use");
+  }
+  if (roles.includes("warehousemanager")) {
+    tabs.add("operator");
+    tabs.add("search");
+    tabs.add("batch-create"); 
+  }
   return Array.from(tabs);
 };
 
@@ -241,13 +253,7 @@ export const getMaterialById = async (id: string): Promise<Material | undefined>
     currentQuantity: i.quantity,
     location:
       i.area && i.position ? { area: i.area, position: i.position } : null,
-    history: [
-      {
-        timestamp: i.updated_at || i.created_at,
-        type: "CREATED",
-        details: { quantity: i.quantity },
-      },
-    ],
+    history: [],
   };
 };
 
@@ -320,6 +326,31 @@ export const updateMaterial = async (
         details: { quantity: result.quantity },
       },
     ],
+  };
+};
+
+export const adjustMaterialQuantity = async (
+  id: string,
+  delta: number,
+  reason: string = "MANUAL_ADJUST"
+): Promise<Material> => {
+  const result = await apiFetch<any>(`/items/${id}/adjust`, {
+    method: "PATCH",
+    body: JSON.stringify({ delta, reason }),
+  });
+
+  // result is the updated item row (from your backend res.json(updated))
+  return {
+    id: String(result.id),
+    materialCode: result.sku || result.name,
+    initialQuantity: result.quantity,
+    currentQuantity: result.quantity,
+    location:
+      result.area && result.position
+        ? { area: result.area, position: result.position }
+        : null,
+    // don't try to rebuild history here; your /api/materials/search already does it correctly
+    history: [],
   };
 };
 
@@ -615,13 +646,7 @@ export async function getMaterial(id: string): Promise<Material | null> {
       currentQuantity: i.quantity,
       location:
         i.area && i.position ? { area: i.area, position: i.position } : null,
-      history: [
-        {
-          timestamp: i.updated_at || i.created_at,
-          type: "CREATED",
-          details: { quantity: i.quantity },
-        },
-      ],
+      history: [],
     };
   } catch {
     return null;
@@ -769,6 +794,7 @@ export async function finishDeadTime(id: string) {
 }
 
 
+
 /* ============================================================
    HEALTH CHECK
    ============================================================ */
@@ -839,3 +865,28 @@ export const updateFrame = async (
     updatedAt: r.updated_at || r.updatedAt,
   };
 };
+
+/* ============================================================
+   MATERIAL USE
+   ============================================================ */
+
+export async function createMaterialUseLog(data: {
+  entryType: "product_sheet" | "sample";
+  productionSheetQr?: string;
+  productionSheetNumber?: string;
+  source: "sheet" | "manual" | "remnant";
+  materialCode?: string;
+  quantity?: number;
+  unit?: MaterialUseUnit;
+}): Promise<MaterialUseLog> {
+  return apiFetch<MaterialUseLog>("/material_use_logs", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getDailyMaterialUseLogs(date: string): Promise<MaterialUseLog[]> {
+  return apiFetch<MaterialUseLog[]>(`/daily_material_use_logs?date=${encodeURIComponent(date)}`);
+}
+
+

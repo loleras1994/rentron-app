@@ -3,11 +3,12 @@ import type { Language } from '../src/types';
 
 // Load translations asynchronously (NO top-level await)
 async function loadTranslations() {
-  const [en, el] = await Promise.all([
+  const [en, el, ar] = await Promise.all([
     fetch("./locales/en.json").then(r => r.json()),
     fetch("./locales/el.json").then(r => r.json()),
+    fetch("./locales/ar.json").then(r => r.json()),
   ]);
-  return { en, el };
+  return { en, el, ar };
 }
 
 interface LanguageContextType {
@@ -26,10 +27,10 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [language, setLanguage] = useState<Language>(() => {
     // Fetch language from localStorage or default to 'en'
     const stored = localStorage.getItem('appLanguage');
-    return stored === 'en' || stored === 'el' ? stored : 'en';
+    return stored === 'en' || stored === 'el' || stored === 'ar' ? stored : 'en';
   });
 
-  const [translations, setTranslations] = useState<{ en: any; el: any } | null>(null);
+  const [translations, setTranslations] = useState<{ en: any; el: any; ar: any } | null>(null);
 
   // Load translations ONCE on mount
   useEffect(() => {

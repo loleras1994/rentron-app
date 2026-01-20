@@ -17,45 +17,48 @@
     "no": "No",
     "back": "Back",
     "dash": "—",
-    "saving": "Saving..."    
+    "saving": "Saving..." ,
+    "reset": "Reset"   
   },
   "header": {
-    "title": "Warehouse Tracker",
+    "title": "Rentron App",
     "welcome": "Welcome",
     "logout": "Logout"
   },
   "roles": {
     "manager": "Manager",
-    "operator": "Operator",
+    "operator": "Material Operator",
     "orderkeeper": "Order Keeper",
     "machineoperator": "Machine Operator",
-    "infraoperator": "Infra Operator",
-    "storekeeper": "Storekeeper",
-    "framekeeper": "Framekeeper"
+    "infraoperator": "INFRA Operator",
+    "storekeeper": "Production Supervisor",
+    "framekeeper": "Frame Keeper",
+    "warehousemanager": "Warehouse Manager",
+    "materiallogger": "Material Consumption Logger"
   },
   "tabs": {
-    "operator": "Operator",
-    "search": "Search",
+    "operator": "Scan Material QR",
+    "search": "Search Materials",
     "manager": "Manager",
-    "transactions": "Transactions",
-    "batch-create": "Batch Create",
+    "transactions": "Material Transactions",
+    "batch-create": "Create Material QRs",
     "orders": "Orders",
-    "scan-product-sheet": "Scan Product Sheet",
+    "scan-product-sheet": "Scan Production QR",
     "daily-logs": "Daily Logs",
     "phase-manager": "Phase Manager",
-    "pdf-import": "Import PDF Orders",
-    "live-phases": "Live Phases",
+    "pdf-import": "Import Orders from PDF",
+    "live-phases": "Active Phases",
     "account": "Account Settings",
-    "dead-time": "Dead Time",
-    "frames": "Frames"
+    "dead-time": "Downtime",
+    "frames": "Search Frames",
+    "material-use": "Material Consumption"
   },
   "login": {
-    "title": "Warehouse Tracker",
+    "title": "Rentron App",
     "subtitle": "Please sign in to your account",
     "usernamePlaceholder": "Username",
     "passwordPlaceholder": "Password",
-    "signIn": "Sign in",
-    "defaultLoginHint": "Default Logins: Manager/Manager, OrderKeeper/OrderKeeper, etc."
+    "signIn": "Sign in"
   },
   "operator": {
     "title": "Operator Actions",
@@ -76,7 +79,13 @@
     "movement": "Movement",
     "partialConsumption": "Partial Consumption",
     "actionsDisabledHint": "Note: Actions are disabled until the material has an initial placement.",
-    "scanAnother": "Scan another material"
+    "scanAnother": "Scan another material",
+    "adjustQuantity": "Adjust Quantity",
+    "adjustQuantityTitle": "Adjust Material Quantity",
+    "newTotalQuantity": "New total quantity",
+    "invalidQuantity": "Quantity must be a number ≥ 0",
+    "quantityUpdated": "Quantity updated ✅",
+    "quantityUpdateFailed": "Failed to update quantity"
   },
   "search": {
     "title": "Search Materials",
@@ -92,14 +101,17 @@
       "PLACED": "PLACED",
       "MOVED": "MOVED",
       "CONSUMED": "CONSUMED",
-      "PARTIALLY_CONSUMED": "PARTIALLY CONSUMED"
+      "PARTIALLY_CONSUMED": "PARTIALLY CONSUMED",
+      "ADJUSTED": "ADJUSTED"
     },
     "historyDetails": {
       "quantity": "Quantity: {{quantity}}",
       "placedTo": "To: {{area}}, Pos {{position}}",
       "movedFromTo": "From: {{fromArea}}, Pos {{fromPosition}} -> To: {{toArea}}, Pos {{toPosition}}",
       "consumed": "Production Code: {{productionCode}}, Consumed: {{consumed}}",
-      "partiallyConsumed": "Prod. Code: {{productionCode}}, Consumed: {{consumed}}, Remaining: {{remaining}}, New Location: {{newLocationArea}}, Pos {{newLocationPosition}}"
+      "partiallyConsumed": "Prod. Code: {{productionCode}}, Consumed: {{consumed}}, Remaining: {{remaining}}, New Location: {{newLocationArea}}, Pos {{newLocationPosition}}",
+      "adjustedFromTo": "From: {{fromQty}} → To: {{toQty}}",
+      "adjusted": "Adjust: {{delta}}"
     },
     "showConsumed": "Show fully consumed materials",
     "noAvailableResults": "No available materials found for \"{{searchTerm}}\"."
@@ -203,37 +215,83 @@
     }
   },
   "orderkeeper": {
+    "removePhase": "Remove phase",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeMaterial": "Remove material",    
     "title": "Order Creation",
+    "modeLabel": "Mode:",
+    "modes": {
+      "create": "Create",
+      "update": "Update",
+      "reprint": "Reprint"
+    },
+    "changeMode": "Change mode",
+
     "orderNumber": "Order Number",
     "orderNumberPlaceholder": "e.g., ORD-2024-001",
     "currentOrder": "Current Order",
     "changeOrder": "Change",
     "productionSheets": "Production Sheets",
     "sheetNumber": "Sheet Number",
+    "productionSheetNumberLabel": "Production Sheet Number",
+
     "productId": "Product ID",
     "quantity": "Quantity",
-    "addProductId": "Add New Product ID",
+
     "materials": "Materials (per piece)",
     "materialId": "Material ID",
     "qtyPerPiece": "Qty / Piece",
     "addMaterial": "Add Material",
+
     "phases": "Phases (per piece)",
     "phaseId": "Phase",
-    "setupTime": "Setup Time (min)",
-    "prodTime": "Prod. Time (min)",
+    "position": "Position",
+
+    "labels": {
+      "setupPerPhase": "Setup (per phase)",
+      "prodPerPiece": "Prod (per piece)"
+    },
+    "units": {
+      "minutes": "min"
+    },
+    "placeholders": {
+      "totalQty": "Total qty",
+      "setupMinutes": "Setup (min)",
+      "totalMinutes": "Total (min)",
+      "position": "e.g. 50"
+    },
+
     "addPhase": "Add Phase",
     "addSheet": "+ Add Production Sheet",
     "saveOrder": "Save Order & Get QRs",
     "saving": "Saving...",
+
     "printAllQRs": "Print QR Codes for all Production Sheets",
     "orderCompletePrompt": "Order Saved. Print QR codes for all production sheets?",
+
+    "editTitle": "Edit Production Sheet",
     "reprintTitle": "Re-print QR Codes for Order: {{orderNumber}}",
     "noSheetsFound": "No production sheets found for this order.",
+
+    "printOptions": "Print Options",
     "printSelected": "Print Selected",
     "printAll": "Print All",
+    "selectedCountSuffix": "selected",
+    "totalCountSuffix": "total",
+
     "sheetNumberHeader": "Sheet #",
     "productIdHeader": "Product ID",
-    "quantityHeader": "Quantity"
+    "quantityHeader": "Quantity",
+
+    "alerts": {
+      "updatedSuccess": "Order updated successfully.",
+      "updatedLockedPhases": "Updated, but some phases were locked (already started): {{phases}}",
+      "saveFailed": "Failed to save order: {{message}}"
+    },
+    "errors": {
+      "noSheetsForOrder": "No production sheets found for this order."
+    }
   },
   "machineOperator": {
     "title": "Production Phase Tracking",
@@ -275,7 +333,48 @@
   "infraOperator": {
     "title": "Daily Operations Log",
     "selectDate": "Select a date to generate the report:",
-    "exportCsv": "Export Daily CSV"
+    "exportExcel": "Export Daily Report (Excel)",
+    "exportMaterialUseExcel": "Export Daily Material Use (Excel)",
+    "exportError": "An error occurred during export.",
+    "noDataForDate": "No data found for {{date}}.",
+    "noMaterialUseForDate": "No material use data found for {{date}}.",
+
+    "excel": {
+      "sheetNameDailyReport": "Daily Report",
+      "type": {
+        "phase": "Phase",
+        "deadTime": "Dead Time"
+      },
+      "dead90Description": "Find Material Time",
+      "headers": {
+        "type": "Type",
+        "operatorUsername": "Operator Username",
+        "orderNumber": "Order Number",
+        "productionSheetNumber": "Production Sheet Number",
+        "productId": "Product ID",
+        "position": "Position",
+        "setupTime": "Setup Time",
+        "productionTime": "Production Time",
+        "quantityDone": "Quantity Done",
+        "deadDescription": "Dead Description",
+        "startTimeLocal": "Start Time (local)",
+        "endTimeLocal": "End Time (local)"
+      }
+    },
+
+    "materialUseExcel": {
+      "sheetName": "Daily Material Use",
+      "headers": {
+        "order": "ORDER",
+        "material": "MATERIAL",
+        "quantity": "QUANTITY",
+        "unit": "UNIT"
+      },
+      "values": {
+      "sample": "SAMPLE",
+      "remnant": "REMNANT"
+    }
+    }
   },
   "account": {
     "title": "Account Settings",
@@ -347,5 +446,227 @@
       "saved": "Saved",
       "unknownWarning": "Some product codes are unknown (not found in Products list) — saved anyway."
     }
+  },
+  "materialUse": {
+    "title": "Material Use Registration",
+    "registerFor": "Register for",
+    "entryType": {
+      "productionSheet": "Production Sheet",
+      "sample": "Sample"
+    },
+    "qr": {
+      "title": "Scan / Paste Product Sheet QR",
+      "scanWithCamera": "Scan with camera",
+      "stopCamera": "Stop camera",
+      "cameraHint": "Point the camera at the QR code. It will auto-detect.",
+      "placeholder": "Paste QR payload here",
+      "load": "Load",
+      "loading": "Loading...",
+      "errors": {
+        "pasteFirst": "Paste/scan QR text first.",
+        "loadFailed": "Failed to load production sheet",
+        "cameraNotSupported": "Camera is not supported in this browser/device.",
+        "barcodeDetectorNotSupported": "QR scanning is not supported in this browser (BarcodeDetector missing). Use Chrome/Android or a compatible browser.",
+        "permissionDenied": "Camera permission denied or unavailable."
+      }
+    },
+    "sheetInfo": {
+      "sheet": "Sheet",
+      "product": "Product",
+      "qty": "Qty"
+    },
+    "materialOption": "Material option",
+    "source": {
+      "sheet": "Use material from product sheet",
+      "remnant": "Remnant",
+      "manual": "Manual input of material code"
+    },
+    "fields": {
+      "material": "Material",
+      "selectMaterial": "Select material",
+      "materialPlaceholder": "Material code",
+      "quantity": "Quantity",
+      "quantityPlaceholder": "e.g. 2.5",
+      "unit": "Unit"
+    },
+    "saveEntry": "Save entry",
+    "saved": "Saved ✅",
+    "errors": {
+      "sampleCannotUseSheet": "Sample cannot use product sheet material list.",
+      "scanFirst": "Scan/load a production sheet first.",
+      "missingSheetNumber": "Missing productionSheetNumber.",
+      "selectMaterial": "Select a material.",
+      "qtyPositive": "Quantity must be > 0",
+      "enterMaterialCode": "Enter material code.",
+      "saveFailed": "Failed to save",
+      "loadSheetToUseSheetMaterials": "Load a production sheet to use “sheet materials”."
+    }
+  },
+  "deadTime": {
+    "title": "Dead Time",
+    "activeDeadTitle": "Active Dead Time",
+    "activePhaseTitle": "Active Phase Time",
+    "labels": {
+      "code": "Code",
+      "sheet": "Sheet",
+      "product": "Product",
+      "time": "Time",
+      "phase": "Phase",
+      "running": "Running",
+      "selectCode": "Select Code",
+      "productManual": "Product ID (manual)",
+      "scanQrOptional": "Scan QR (optional)",
+      "scannedSheet": "Scanned Sheet",
+      "scannedProduct": "Product"
+    },
+    "buttons": {
+      "startScanner": "Start Scanner",
+      "closeScanner": "Close Scanner",
+      "startDeadTime": "Start Dead Time",
+      "finish": "Finish"
+    },
+    "select": {
+      "placeholder": "-- choose --"
+    },
+    "messages": {
+      "requireManualProduct": "This code requires a manual Product ID.",
+      "requireProductOrScan": "This code requires a Product, either by scanning QR or entering Product ID.",
+      "cannotStartWhilePhaseRunning": "You cannot start dead-time while a phase is running. Finish it from the Machine Operator tab."
+    },
+    "errors": {
+      "requiredDetails": "Please provide required product / scan details.",
+      "alreadyActiveDead": "You already have an active dead-time.",
+      "activePhaseRunning": "You already have an active phase-time. Finish it before starting dead-time.",
+      "readQrFailed": "Failed to read QR",
+      "startFailed": "Failed to start dead-time",
+      "finishFailed": "Failed to finish dead-time"
+    },
+    "codes": {
+      "10": "MATERIAL MISSING",
+      "20": "WORK MISSING",
+      "30": "AUXILIARY TASKS",
+      "40": "MACHINE FAILURE",
+      "50": "MAINTENANCE - RECTIFIER",
+      "60": "SAMPLE PRODUCTION",
+      "70": "QUALITY ISSUES",
+      "80": "REWORK",
+      "90": "LOAD / UNLOAD / MOVE MATERIALS",
+      "100": "REMOVE FROM OVEN",
+      "110": "RACKS",
+      "120": "CUT MATERIAL",
+      "130": "PACKAGING FOR SUBCONTRACT",
+      "140": "TRANSPORT TASKS FOR OVEN",
+      "150": "EXTRA WORK ON PRODUCTION ORDER",
+      "160": "TRAINING - MEETINGS",
+      "170": "TOOL MISSING",
+      "180": "LABELS WITHOUT ORDER"
+    }
+  },
+  "livePhases": {
+    "title": "Live Working Phases",
+
+    "activeNow": "Active Now",
+    "activeDeadTime": "Active Dead Time",
+    "idleUsers": "Idle Users",
+
+    "user": "User",
+    "sheet": "Sheet",
+    "product": "Product",
+    "phase": "Phase",
+    "status": "Status",
+    "running": "Running",
+    "planned": "Planned",
+    "actual": "Actual",
+    "overrun": "Overrun!",
+
+    "code": "Code",
+    "lastSheet": "Last Sheet",
+    "lastPhase": "Last Phase",
+    "lastWorkDeadTime": "Last Work: Dead Time",
+    "finished": "Finished",
+    "idle": "Idle",
+
+    "minutes": "min",
+    "invalidDate": "Invalid Date"
+  },
+  "phaseManager": {
+    "title": "Phase Manager",
+    "loadingError": "Failed to load phases.",
+    "addNewTitle": "Add new phase",
+    "fields": {
+      "code": "Code",
+      "name": "Name"
+    },
+    "placeholders": {
+      "code": "Phase Code (e.g. cutting)",
+      "name": "Phase Name (e.g. Cutting)"
+    },
+    "listTitle": "Existing Phases",
+    "table": {
+      "code": "Code",
+      "name": "Name",
+      "actions": "Actions"
+    },
+    "confirmDelete": "Delete this phase?",
+    "buttons": {
+      "save": "Save",
+      "edit": "Edit",
+      "delete": "Delete"
+    }
+  },
+  "pdfImport": {
+    "title": "Import Order from PDF",
+    "fileLabel": "PDF file",
+    "buttons": {
+      "parsePdf": "Parse PDF",
+      "parsing": "Parsing...",
+      "createAllSheets": "Create All Sheets",
+      "saving": "Saving...",
+      "printPdf": "Print PDF",
+      "createPdfWithQr": "Create PDF with QR",
+      "working": "Working...",
+      "printMaterialTicketsSticker": "Print MATERIAL TICKETS (Sticker)",
+      "printMaterialTicketsFull": "Print MATERIAL TICKETS (Full)",
+      "printStickerLayout": "Print Sticker Layout",
+      "printFullLayout": "Print Full Layout",
+      "close": "Close"
+    },
+    "errors": {
+      "parseFailed": "Failed to parse PDF",
+      "createSheetsFailed": "Failed to create sheets",
+      "sheetConflicts": "Sheet numbers already exist for this order: {{numbers}}",
+      "noSheetsForOrder": "No production sheets found or created for this order.",
+      "createPdfWithQrFailed": "Failed to create PDF with QR"
+    },
+    "parsed": {
+      "title": "Order Parsed",
+      "orderNumber": "Order Number",
+      "productsTitle": "Products in this PDF",
+      "sheetNumber": "Sheet Number",
+      "productId": "Product ID",
+      "quantity": "Quantity",
+      "materialsTitle": "Materials",
+      "phasesTitle": "Phases",
+      "perPiece": "per piece",
+      "phaseLine": "phase {{phaseId}}: setup {{setup}} min, prod {{prod}} min/piece, position: {{pos}}",
+      "positionNotAssigned": "Not assigned"
+    },
+    "materialTickets": {
+      "title": "MATERIAL TICKETS (labels)",
+      "found": "Found {{count}} tickets."
+    },
+    "created": {
+      "title": "Sheets Created Successfully!",
+      "line": "Sheet {{sheet}} — Product {{product}} — Qty {{qty}}"
+    },
+    "printWindows": {
+      "printProductionSheetsTitle": "Print Production Sheets",
+      "printMaterialTicketsTitle": "Print Material Tickets",
+      "printPdfTitle": "Print PDF"
+    }
   }
 }
+
+
+
+

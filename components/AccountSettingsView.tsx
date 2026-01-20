@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useTranslation } from "../hooks/useTranslation";
 import * as api from "../api/client";
+import type { Language } from "../src/types";
 
 const AccountSettingsView: React.FC = () => {
   const { t, language, changeLanguage } = useTranslation();
@@ -35,7 +36,7 @@ const AccountSettingsView: React.FC = () => {
     }
   };
 
-  const handleLanguageChange = (lang: string) => {
+  const handleLanguageChange = (lang: Language) => {
     changeLanguage(lang);
     localStorage.setItem("preferred_lang", lang);
     alert("Language changed");
@@ -66,6 +67,17 @@ const AccountSettingsView: React.FC = () => {
           >
             Ελληνικά
           </button>
+
+          <button
+            onClick={() => handleLanguageChange("ar")}
+            className={`px-4 py-2 rounded ${
+              language === "ar" ? "bg-indigo-600 text-white" : "bg-gray-200"
+            }`}
+          >
+            العربية
+          </button>
+
+
         </div>
       </div>
 

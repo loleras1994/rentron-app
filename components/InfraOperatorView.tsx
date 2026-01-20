@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useTranslation } from "../hooks/useTranslation";
 import * as api from "../api/client";
+import * as XLSX from "xlsx";
 
 /* ---------------------------------------------------------
    UNIVERSAL TIMESTAMP PARSER
@@ -26,9 +27,34 @@ function formatLocalDDMMYYHHmm(date: Date | null): string {
   return `${dd}-${mm}-${yy} ${hh}:${min}`;
 }
 
-/* Escape CSV values safely */
-function csvEscape(v: unknown): string {
-  return `"${String(v ?? "").replace(/"/g, '""')}"`;
+/* ---------------------------------------------------------
+   Download helpers (.xlsx)
+--------------------------------------------------------- */
+function autoFitColumnsFromAoA(data: any[][]) {
+  const widths: { wch: number }[] = [];
+  data.forEach((row) => {
+    row.forEach((cell, colIdx) => {
+      const str = cell == null ? "" : String(cell);
+      const len = str.length;
+      widths[colIdx] = widths[colIdx] || { wch: 10 };
+      widths[colIdx].wch = Math.min(60, Math.max(widths[colIdx].wch, len + 2));
+    });
+  });
+  return widths;
+}
+
+function downloadXlsxFromAoA(
+  aoa: any[][],
+  fileName: string,
+  sheetName = "Report"
+) {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  ws["!cols"] = autoFitColumnsFromAoA(aoa);
+
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, fileName, { compression: true });
 }
 
 /* ---------------------------------------------------------
@@ -41,109 +67,188 @@ const InfraOperatorView: React.FC = () => {
   );
   const [isExporting, setIsExporting] = useState(false);
 
+
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const allLogs = await api.getDailyLogs(); // unified mapped logs
-
-      console.log("MAPPED LOGS:", allLogs);
+      const allLogs = await api.getDailyLogs();
 
       // Filter logs by date (using startTime)
-      const logs = allLogs.filter((log) => {
+      const logs = allLogs.filter((log: any) => {
         const start = parseTimestamp(log.startTime);
         if (!start) return false;
         return start.toISOString().split("T")[0] === reportDate;
       });
 
       if (logs.length === 0) {
-        alert(`No data found for ${reportDate}.`);
+        alert(
+            t("infraOperator.noDataForDate", { date: reportDate })
+        );
         return;
       }
 
+      // Headers MUST come from translations (no hardcode)
       const headers = [
-        "Type",
-        "Operator Username",
-        "Order Number",
-        "Production Sheet Number",
-        "Product ID",
-        "Phase ID",
-        "Position",
-        "Dead Code",
-        "Dead Description",
-        "Start Time (local)",
-        "End Time (local)",
-        "Total Minutes",
-        "Setup Time",
-        "Production Time",
-        "Quantity Done",
-        "Find Material Time",
+        t("infraOperator.excel.headers.type"),
+        t("infraOperator.excel.headers.operatorUsername"),
+        t("infraOperator.excel.headers.orderNumber"),
+        t("infraOperator.excel.headers.productionSheetNumber"),
+        t("infraOperator.excel.headers.productId"),
+        t("infraOperator.excel.headers.position"),
+        t("infraOperator.excel.headers.setupTime"),
+        t("infraOperator.excel.headers.productionTime"),
+        t("infraOperator.excel.headers.quantityDone"),
+        t("infraOperator.excel.headers.deadDescription"),
+        t("infraOperator.excel.headers.startTimeLocal"),
+        t("infraOperator.excel.headers.endTimeLocal"),
       ];
 
-      const csvRows = [headers.map(csvEscape).join(";")];
+      const rows: any[][] = [headers];
 
       logs.forEach((log: any) => {
         const start = parseTimestamp(log.startTime);
         const end = parseTimestamp(log.endTime);
 
-        let totalMinutes = "";
-        if (start && end) {
-          totalMinutes = ((end.getTime() - start.getTime()) / 60000).toFixed(1);
+        const operator = log.operatorUsername || log.username || "";
+
+        // FindMaterialTime always comes from PHASE logs (your rule)
+        const hasFindMaterialTime =
+          log.type !== "dead" &&
+          typeof log.findMaterialTime === "number" &&
+          log.findMaterialTime > 0;
+
+        // Convert findMaterialTime into a "dead time" row with code 90
+        const isConverted90 = hasFindMaterialTime;
+        const isDead = log.type === "dead" || isConverted90;
+
+        const deadCodeForType = isConverted90 ? "90" : log.deadCode ?? "";
+
+        // Type cell (translated labels)
+        const typeValue = isDead
+          ? `${t("infraOperator.excel.type.deadTime")}: ${deadCodeForType}`
+          : `${t("infraOperator.excel.type.phase")}: ${log.phaseId ?? ""}`;
+
+        // Setup time:
+        // - only for phase rows
+        // - if it's 0 => EMPTY
+        let setupTime: string | number = "";
+        if (!isDead && typeof log.setupTime === "number" && log.setupTime > 0) {
+          setupTime = (log.setupTime / 60).toFixed(1);
         }
 
-        const isDead = log.type === "dead";
+        // Production time:
+        // - phase: productionTime/60
+        // - dead (and converted 90): duration start/end (minutes)
+        let productionTime: string | number = "";
+        if (!isDead) {
+          if (typeof log.productionTime === "number" && log.productionTime > 0) {
+            productionTime = (log.productionTime / 60).toFixed(1);
+          }
+        } else if (start && end) {
+          productionTime = ((end.getTime() - start.getTime()) / 60000).toFixed(1);
+        }
 
-        const operator =
-          log.operatorUsername ||
-          log.username ||
-          "";    
+        // Quantity done:
+        // - never for dead rows
+        // - if 0 => empty (your rule)
+        let quantityDone: string | number = "";
+        if (!isDead) {
+          const q = log.quantityDone ?? "";
+          quantityDone = q === 0 || q === "0" ? "" : q;
+        }
 
-        const row = [
-          isDead ? "Dead Time" : "Phase",
+        // Dead description:
+        // - dead: log.deadDescription
+        // - converted 90: translated "dead time 90 description"
+        const deadDescription = isDead
+          ? isConverted90
+            ? t("infraOperator.excel.dead90Description")
+            : log.deadDescription ?? ""
+          : "";
+
+        // For converted 90, make it look EXACTLY like a dead time row:
+        // - clear order/sheet/product/position/setup/quantity
+        const orderNumber = isConverted90 ? "" : (log.orderNumber ?? "");
+        const productionSheetNumber = isConverted90 ? "" : (log.productionSheetNumber ?? "");
+        const productId = isConverted90 ? "" : (log.productId ?? "");
+        const position = isDead ? "" : (log.position ?? "");
+        if (isConverted90) {
+          setupTime = "";
+          quantityDone = "";
+        }
+
+        rows.push([
+          typeValue,
           operator,
-          log.orderNumber ?? "",
-          log.productionSheetNumber ?? "",
-          log.productId ?? "",
-          isDead ? "" : log.phaseId ?? "",
-          isDead ? "" : log.position ?? "",
-          isDead ? log.deadCode ?? "" : "",
-          isDead ? log.deadDescription ?? "" : "",
+          orderNumber,
+          productionSheetNumber,
+          productId,
+          position,
+          setupTime,
+          productionTime,
+          quantityDone,
+          deadDescription,
           formatLocalDDMMYYHHmm(start),
           formatLocalDDMMYYHHmm(end),
-          totalMinutes,
-          isDead ? "" : log.setupTime ? (log.setupTime / 60).toFixed(1) : "",
-          isDead
-            ? ""
-            : log.productionTime
-            ? (log.productionTime / 60).toFixed(1)
-            : "",
-          isDead ? "" : log.quantityDone ?? "",
-          isDead
-            ? ""
-            : log.findMaterialTime
-            ? (log.findMaterialTime / 60).toFixed(1)
-            : "",
-        ].map(csvEscape);
-
-        csvRows.push(row.join(";"));
+        ]);
       });
 
-      const csvContent = csvRows.join("\n");
-
-      const blob = new Blob(["\uFEFF" + csvContent], {
-        type: "text/csv;charset=utf-8;",
-      });
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `daily_report_${reportDate}.csv`;
-      link.click();
-
-      URL.revokeObjectURL(url);
+      downloadXlsxFromAoA(
+        rows,
+        `daily_report_${reportDate}.xlsx`,
+        t("infraOperator.excel.sheetNameDailyReport")
+      );
     } catch (err) {
-      console.error("Failed to export CSV:", err);
-      alert("An error occurred during export.");
+      console.error("Failed to export Excel:", err);
+      alert(t("infraOperator.exportError"));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportMaterialUse = async () => {
+    setIsExporting(true);
+    try {
+      const rows = await api.getDailyMaterialUseLogs(reportDate);
+
+      if (!rows || rows.length === 0) {
+        alert(t("infraOperator.noMaterialUseForDate", { date: reportDate }));
+        return;
+      }
+
+      // Headers for material use sheet via translations (no hardcode)
+      const headers = [
+        t("infraOperator.materialUseExcel.headers.order"),
+        t("infraOperator.materialUseExcel.headers.material"),
+        t("infraOperator.materialUseExcel.headers.quantity"),
+        t("infraOperator.materialUseExcel.headers.unit"),
+      ];
+
+      const data: any[][] = [headers];
+
+      rows.forEach((r: any) => {
+        const entoli = r.production_sheet_number
+          ? r.production_sheet_number
+          : t("infraOperator.materialUseExcel.values.sample");
+
+        const yliko =
+          r.source === "remnant"
+            ? t("infraOperator.materialUseExcel.values.remnant")
+            : (r.material_code || "");
+        const posotita = r.source === "remnant" ? "" : (r.quantity ?? "");
+        const monada = r.source === "remnant" ? "" : (r.unit ?? "");
+
+        data.push([entoli, yliko, posotita, monada]);
+      });
+
+      downloadXlsxFromAoA(
+        data,
+        `daily_material_use_${reportDate}.xlsx`,
+        t("infraOperator.materialUseExcel.sheetName")
+      );
+    } catch (err) {
+      console.error("Failed to export Material Use Excel:", err);
+      alert(t("infraOperator.exportError"));
     } finally {
       setIsExporting(false);
     }
@@ -178,7 +283,15 @@ const InfraOperatorView: React.FC = () => {
           disabled={isExporting}
           className="w-full py-2 rounded-md text-white bg-indigo-600 disabled:bg-indigo-400"
         >
-          {isExporting ? t("common.loading") : t("infraOperator.exportCsv")}
+          {isExporting ? t("common.loading") : t("infraOperator.exportExcel")}
+        </button>
+
+        <button
+          onClick={handleExportMaterialUse}
+          disabled={isExporting}
+          className="w-full py-2 rounded-md text-white bg-emerald-600 disabled:bg-emerald-400"
+        >
+          {isExporting ? t("common.loading") : t("infraOperator.exportMaterialUseExcel")}
         </button>
       </div>
     </div>

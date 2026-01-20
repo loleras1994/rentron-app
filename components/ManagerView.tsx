@@ -281,14 +281,14 @@ const ManagerView: React.FC = () => {
                   {t('manager.table.role')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('manager.table.allowedTabs')}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('manager.table.lastLogin')}
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('manager.table.actions')}
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('manager.table.allowedTabs')}
+                </th>                
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -310,9 +310,6 @@ const ManagerView: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.allowedTabs.map(tab => t(`tabs.${tab}`)).join(', ')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatTimestamp(user.lastLogin)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -323,6 +320,9 @@ const ManagerView: React.FC = () => {
                       {t('common.edit')}
                     </button>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {user.allowedTabs.map(tab => t(`tabs.${tab}`)).join(', ')}
+                  </td>                  
                 </tr>
               ))}
             </tbody>

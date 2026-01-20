@@ -10,6 +10,7 @@ export interface HistoryEvent {
     | "MOVED"
     | "CONSUMED"
     | "PARTIALLY_CONSUMED"
+    | "ADJUSTED"
     | "SYNC"        // ✅ Added for backend → frontend synchronization
     | "UPDATED";    // ✅ Added for update tracking
   details: Record<string, any>;
@@ -121,6 +122,17 @@ export interface Frame {
   updatedAt: string;
 }
 
+export interface MaterialUseLog {
+  id: string;
+  username: string | null;
+  entry_type: "product_sheet" | "sample";
+  production_sheet_number: string | null;
+  source: "sheet" | "manual" | "remnant";
+  material_code: string | null;
+  quantity: number | null;
+  unit: MaterialUseUnit | null;
+  created_at: string;
+}
 
 /* ============================================================
    USERS / AUTH
@@ -133,7 +145,9 @@ export type UserRole =
   | "machineoperator"
   | "infraoperator"
   | "storekeeper"
-  | "framekeeper";
+  | "framekeeper"
+  | "materiallogger"
+  | "warehousemanager";
 
 export type AllowedView =
   | "operator"
@@ -150,7 +164,8 @@ export type AllowedView =
   | "live-phases"
   | "account"
   | "dead-time"
-  | "frames";
+  | "frames"
+  | "material-use";
 
 export interface User {
   id: number;
@@ -180,10 +195,13 @@ export type ActionType =
   | "MOVEMENT"
   | "PARTIAL_CONSUMPTION";
 
-export type Language = "en" | "el";
+export type Language = "en" | "el" | "ar";
 
 export type FramePosition = 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17;
 export type FrameQuality = 90 | 120;
+
+export type MaterialUseUnit = "KG" | "m" | "cm" | "pcs" | "other";
+
 
 /* ============================================================
    TRANSACTIONS (DB format)
@@ -194,8 +212,11 @@ export type Transaction = {
   materialId: string;
   materialName: string;
   quantityChange: number;
-  reason: string;
-  user: string | null;
-  location: { area: string; position: string } | null;
+  fromQty?: number | null;
+  toQty?: number | null;
+  reason?: string | null;
+  user?: string | null;
+  location?: { area: string; position: string } | null;
   timestamp: string;
 };
+

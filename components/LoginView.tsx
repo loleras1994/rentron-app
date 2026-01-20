@@ -98,9 +98,6 @@ const LoginView: React.FC = () => {
             </button>
           </div>
         </form>
-         <p className="mt-4 text-center text-xs text-gray-500">
-            {t('login.defaultLoginHint', { username: 'Manager', password: 'Manager' })}
-        </p>
       </div>
     </div>
   );

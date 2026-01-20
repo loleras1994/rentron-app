@@ -6,30 +6,29 @@ import Scanner from "./Scanner";
 
 type DeadCode = {
   code: number;
-  label: string;
   requiresProductManual?: boolean; // 60
   requiresProductOrSheet?: boolean; // 70,100,130,140,150
 };
 
 const DEAD_CODES: DeadCode[] = [
-  { code: 10, label: "ΕΛΛΕΙΨΗ ΥΛΙΚΟΥ" },
-  { code: 20, label: "ΕΛΛΕΙΨΗ ΕΡΓΑΣΙΑΣ" },
-  { code: 30, label: "ΒΟΗΘΗΤΙΚΕΣ ΕΡΓΑΣΙΕΣ" },
-  { code: 40, label: "ΒΛΑΒΗ ΜΗΧΑΝΗΣ" },
-  { code: 50, label: "ΣΥΝΤΗΡΗΣΗ - ΡΕΚΤΙΦΙΕ" },
-  { code: 60, label: "ΠΑΡΑΓΩΓΗ ΔΕΙΓΜΑΤΟΣ", requiresProductManual: true },
-  { code: 70, label: "ΠΟΙΟΤΙΚΑ ΠΡΟΒΛΗΜΑΤΑ", requiresProductOrSheet: true },
-  { code: 80, label: "ΑΝΑΣΚΕΥΕΣ" },
-  { code: 90, label: "ΦΟΡΤ. - ΕΚΦΟΡΤ. - ΜΕΤΑΚ.ΥΛΙΚΩΝ" },
-  { code: 100, label: "ΚΑΤΕΒΑΣΜΑ ΑΠΟ ΦΟΥΡΝΟ", requiresProductOrSheet: true },
-  { code: 110, label: "RACKS" },
-  { code: 120, label: "ΚΟΠΗ ΥΛΙΚΟΥ" },
-  { code: 130, label: "ΣΥΣΚΕΥΑΣΙΑ ΓΙΑ ΦΑΣΟΝ", requiresProductOrSheet: true },
-  { code: 140, label: "ΕΡΓΑΣΙΕΣ Μ/Τ ΓΙΑ ΦΟΥΡΝΟ", requiresProductOrSheet: true },
-  { code: 150, label: "ΕΠΙΠΡΟΣΘΕΤΗ ΕΡΓΑΣΙΑ ΣΕ ΕΝΤΟΛΗ ΠΑΡΑΓ.", requiresProductOrSheet: true },
-  { code: 160, label: "ΕΚΠΑΙΔΕΥΣΗ - ΣΥΣΚΕΨΕΙΣ" },
-  { code: 170, label: "ΕΛΛΕΙΨΗ ΕΡΓΑΛΕΙΟΥ" },
-  { code: 180, label: "ΤΑΜΠΕΛΕΣ ΧΩΡΙΣ ΕΝΤΟΛΗ" },
+  { code: 10 },
+  { code: 20 },
+  { code: 30 },
+  { code: 40 },
+  { code: 50 },
+  { code: 60, requiresProductManual: true },
+  { code: 70, requiresProductOrSheet: true },
+  { code: 80 },
+  { code: 90 },
+  { code: 100, requiresProductOrSheet: true },
+  { code: 110 },
+  { code: 120 },
+  { code: 130, requiresProductOrSheet: true },
+  { code: 140, requiresProductOrSheet: true },
+  { code: 150, requiresProductOrSheet: true },
+  { code: 160 },
+  { code: 170 },
+  { code: 180 },
 ];
 
 interface ActiveDeadTime {
@@ -61,8 +60,12 @@ const DeadTimeView: React.FC = () => {
   const [useScanner, setUseScanner] = useState(false);
 
   const [scannedSheetId, setScannedSheetId] = useState<string | null>(null);
-  const [scannedOrderNumber, setScannedOrderNumber] = useState<string | null>(null);
-  const [scannedSheetNumber, setScannedSheetNumber] = useState<string | null>(null);
+  const [scannedOrderNumber, setScannedOrderNumber] = useState<string | null>(
+    null
+  );
+  const [scannedSheetNumber, setScannedSheetNumber] = useState<string | null>(
+    null
+  );
   const [scannedProductId, setScannedProductId] = useState<string | null>(null);
 
   const [activeDead, setActiveDead] = useState<ActiveDeadTime | null>(null);
@@ -166,7 +169,7 @@ const DeadTimeView: React.FC = () => {
     try {
       setScanError(null);
 
-      // Χρησιμοποιούμε ήδη το endpoint που έχεις για QR
+      // Uses your existing endpoint for production QR
       const raw = await api.getProductionSheetByQr(decodedText);
 
       setScannedSheetId(raw.id);
@@ -177,7 +180,7 @@ const DeadTimeView: React.FC = () => {
       setUseScanner(false);
     } catch (err: any) {
       console.error("DeadTime scan error:", err);
-      setScanError(err.message || "Failed to read QR");
+      setScanError(err.message || t("deadTime.errors.readQrFailed"));
     }
   };
 
@@ -202,21 +205,19 @@ const DeadTimeView: React.FC = () => {
   const handleStart = async () => {
     if (!user || !selectedCode) return;
     if (!canStart()) {
-      alert("Please provide required product / scan details.");
+      alert(t("deadTime.errors.requiredDetails"));
       return;
     }
 
-    // αν υπάρχει activeDead -> δεν ξεκινάμε δεύτερο
+    // if activeDead -> don't start another
     if (activeDead) {
-      alert("You already have an active dead-time.");
+      alert(t("deadTime.errors.alreadyActiveDead"));
       return;
     }
 
-    // αν υπάρχει activePhase -> respect rule (backend επίσης το ελέγχει)
+    // if activePhase -> respect rule (backend also checks)
     if (activePhase) {
-      alert(
-        "You already have an active phase-time. Finish it before starting dead-time."
-      );
+      alert(t("deadTime.errors.activePhaseRunning"));
       return;
     }
 
@@ -226,25 +227,19 @@ const DeadTimeView: React.FC = () => {
     const payload: any = {
       username: user.username,
       code: selectedCode,
-      description: meta.label,
+      description: t(`deadTime.codes.${selectedCode}`),
     };
 
-    // προτεραιότητα: manual product > scanned product
+    // priority: manual product > scanned product
     if (manualProductId.trim()) {
       payload.productId = manualProductId.trim();
     } else if (scannedProductId) {
       payload.productId = scannedProductId;
     }
 
-    if (scannedSheetId) {
-      payload.sheetId = scannedSheetId;
-    }
-    if (scannedOrderNumber) {
-      payload.orderNumber = scannedOrderNumber;
-    }
-    if (scannedSheetNumber) {
-      payload.productionSheetNumber = scannedSheetNumber;
-    }
+    if (scannedSheetId) payload.sheetId = scannedSheetId;
+    if (scannedOrderNumber) payload.orderNumber = scannedOrderNumber;
+    if (scannedSheetNumber) payload.productionSheetNumber = scannedSheetNumber;
 
     setLoading(true);
     try {
@@ -269,7 +264,7 @@ const DeadTimeView: React.FC = () => {
       setScannedProductId(null);
     } catch (err: any) {
       console.error("startDeadTime error:", err);
-      alert(err.message || "Failed to start dead-time");
+      alert(err.message || t("deadTime.errors.startFailed"));
     } finally {
       setLoading(false);
     }
@@ -283,7 +278,7 @@ const DeadTimeView: React.FC = () => {
       await api.finishDeadTime(activeDead.id);
       setActiveDead(null);
 
-      // μετά το finish μπορούμε να ξαναφορτώσουμε live status για να δούμε αν είναι idle
+      // after finish, reload live status
       if (user) {
         const status = await api.getLiveStatus();
         const myPhase = (status.active || []).find(
@@ -293,7 +288,7 @@ const DeadTimeView: React.FC = () => {
       }
     } catch (err: any) {
       console.error("finishDeadTime error:", err);
-      alert(err.message || "Failed to finish dead-time");
+      alert(err.message || t("deadTime.errors.finishFailed"));
     } finally {
       setLoading(false);
     }
@@ -301,78 +296,97 @@ const DeadTimeView: React.FC = () => {
 
   // ---------- UI ----------
 
-  // Αν έχει ενεργό DEAD TIME
+  // Active DEAD TIME
   if (activeDead) {
     return (
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto">
-        <h2 className="text-2xl font-bold mb-4">Active Dead Time</h2>
+        <h2 className="text-2xl font-bold mb-4">
+          {t("deadTime.activeDeadTitle")}
+        </h2>
+
         <p className="mb-2">
-          <b>Code:</b> {activeDead.code} – {activeDead.description}
+          <b>{t("deadTime.labels.code")}:</b> {activeDead.code} –{" "}
+          {activeDead.description}
         </p>
+
         {activeDead.orderNumber && activeDead.productionSheetNumber && (
           <p className="mb-1">
-            <b>Sheet:</b> {activeDead.orderNumber}/
+            <b>{t("deadTime.labels.sheet")}:</b> {activeDead.orderNumber}/
             {activeDead.productionSheetNumber}
           </p>
         )}
+
         {activeDead.productId && (
           <p className="mb-1">
-            <b>Product:</b> {activeDead.productId}
+            <b>{t("deadTime.labels.product")}:</b> {activeDead.productId}
           </p>
         )}
+
         <p className="mb-4">
-          <b>Time:</b> {formatDuration(seconds)}
+          <b>{t("deadTime.labels.time")}:</b> {formatDuration(seconds)}
         </p>
+
         <button
           onClick={handleFinish}
           disabled={loading}
-          className="w-full bg-red-600 text-white py-3 rounded-md"
+          className="w-full bg-red-600 text-white py-3 rounded-md disabled:opacity-60"
         >
-          Finish
+          {t("deadTime.buttons.finish")}
         </button>
       </div>
     );
   }
 
-  // Αν έχει ενεργό PHASE TIME (άλλο tab)
+  // Active PHASE TIME
   if (activePhase) {
     return (
       <div className="bg-white p-6 rounded-lg shadow-lg max-w-md mx-auto">
-        <h2 className="text-2xl font-bold mb-4">Active Phase Time</h2>
+        <h2 className="text-2xl font-bold mb-4">
+          {t("deadTime.activePhaseTitle")}
+        </h2>
+
         <p className="mb-1">
-          <b>Sheet:</b> {activePhase.productionSheetNumber}
+          <b>{t("deadTime.labels.sheet")}:</b>{" "}
+          {activePhase.productionSheetNumber}
         </p>
+
         <p className="mb-1">
-          <b>Product:</b> {activePhase.productId}
+          <b>{t("deadTime.labels.product")}:</b> {activePhase.productId}
         </p>
+
         <p className="mb-1">
-          <b>Phase:</b> {activePhase.phaseId}
+          <b>{t("deadTime.labels.phase")}:</b> {activePhase.phaseId}
         </p>
+
         <p className="mb-4">
-          <b>Running:</b> {Math.round(activePhase.runningSeconds / 60)} min
+          <b>{t("deadTime.labels.running")}:</b>{" "}
+          {Math.round(activePhase.runningSeconds / 60)} min
         </p>
+
         <p className="text-sm text-gray-600 mb-4">
-          You cannot start dead-time while a phase is running.
-          Finish it from the Machine Operator tab.
+          {t("deadTime.messages.cannotStartWhilePhaseRunning")}
         </p>
       </div>
     );
   }
 
-  // Default UI: επιλογή κωδικού + product/QR options
+  // Default UI
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg max-w-xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">Dead Time</h2>
+      <h2 className="text-2xl font-bold mb-4">{t("deadTime.title")}</h2>
 
       {/* Select code */}
       <div className="mb-4">
-        <label className="block mb-1 font-semibold">Select Code</label>
+        <label className="block mb-1 font-semibold">
+          {t("deadTime.labels.selectCode")}
+        </label>
         <select
           className="w-full border rounded px-3 py-2"
           value={selectedCode ?? ""}
           onChange={(e) => {
             const v = e.target.value ? Number(e.target.value) : null;
             setSelectedCode(v);
+
             // reset fields on code change
             setManualProductId("");
             setScannedSheetId(null);
@@ -383,10 +397,10 @@ const DeadTimeView: React.FC = () => {
             setScanError(null);
           }}
         >
-          <option value="">-- choose --</option>
+          <option value="">{t("deadTime.select.placeholder")}</option>
           {DEAD_CODES.map((c) => (
             <option key={c.code} value={c.code}>
-              {c.code} – {c.label}
+              {c.code} – {t(`deadTime.codes.${c.code}`)}
             </option>
           ))}
         </select>
@@ -397,41 +411,46 @@ const DeadTimeView: React.FC = () => {
           {/* Requirements info */}
           {requiresProductManual && (
             <p className="text-sm text-gray-600 mb-2">
-              This code requires a <b>manual Product ID</b>.
-            </p>
-          )}
-          {requiresProductOrSheet && (
-            <p className="text-sm text-gray-600 mb-2">
-              This code requires a <b>Product</b>, either by scanning QR
-              or entering Product ID.
+              {t("deadTime.messages.requireManualProduct")}
             </p>
           )}
 
-          {/* Manual product ID if needed or allowed */}
+          {requiresProductOrSheet && (
+            <p className="text-sm text-gray-600 mb-2">
+              {t("deadTime.messages.requireProductOrScan")}
+            </p>
+          )}
+
+          {/* Manual product ID */}
           {(requiresProductManual || requiresProductOrSheet) && (
             <div className="mb-4">
-              <label className="block mb-1 font-semibold">Product ID (manual)</label>
+              <label className="block mb-1 font-semibold">
+                {t("deadTime.labels.productManual")}
+              </label>
               <input
                 type="text"
                 className="w-full border rounded px-3 py-2"
                 value={manualProductId}
                 onChange={(e) => setManualProductId(e.target.value)}
-                placeholder="Enter product code"
+                placeholder={t("deadTime.labels.productManual")}
               />
             </div>
           )}
 
-          {/* Scanner if allowed for this code */}
+          {/* Scanner */}
           {requiresProductOrSheet && (
             <div className="mb-4">
-              <label className="block mb-1 font-semibold">Scan QR (optional)</label>
+              <label className="block mb-1 font-semibold">
+                {t("deadTime.labels.scanQrOptional")}
+              </label>
+
               {!useScanner && (
                 <button
                   type="button"
                   onClick={() => setUseScanner(true)}
                   className="w-full bg-indigo-600 text-white py-2 rounded-md mb-2"
                 >
-                  Start Scanner
+                  {t("deadTime.buttons.startScanner")}
                 </button>
               )}
 
@@ -446,7 +465,7 @@ const DeadTimeView: React.FC = () => {
                     onClick={() => setUseScanner(false)}
                     className="w-full bg-gray-500 text-white py-2 rounded-md mt-2"
                   >
-                    Close Scanner
+                    {t("deadTime.buttons.closeScanner")}
                   </button>
                 </div>
               )}
@@ -458,14 +477,15 @@ const DeadTimeView: React.FC = () => {
               {(scannedSheetId || scannedProductId) && (
                 <div className="mt-2 text-sm text-green-700 bg-green-50 p-2 rounded">
                   <p>
-                    <b>Scanned Sheet:</b>{" "}
+                    <b>{t("deadTime.labels.scannedSheet")}:</b>{" "}
                     {scannedOrderNumber && scannedSheetNumber
                       ? `${scannedOrderNumber}/${scannedSheetNumber}`
                       : scannedSheetId}
                   </p>
                   {scannedProductId && (
                     <p>
-                      <b>Product:</b> {scannedProductId}
+                      <b>{t("deadTime.labels.scannedProduct")}:</b>{" "}
+                      {scannedProductId}
                     </p>
                   )}
                 </div>
@@ -481,7 +501,7 @@ const DeadTimeView: React.FC = () => {
         disabled={loading || !selectedCode || !canStart()}
         className="w-full bg-indigo-600 text-white py-3 rounded-md disabled:opacity-50"
       >
-        Start Dead Time
+        {t("deadTime.buttons.startDeadTime")}
       </button>
     </div>
   );

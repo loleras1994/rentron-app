@@ -20,6 +20,7 @@ import { LanguageProvider } from './context/LanguageContext';
 import AccountSettingsView from './components/AccountSettingsView';
 import DeadTimeView from "./components/DeadTimeView";
 import FramesView from './components/FramesView';
+import MaterialUseView from "./components/MaterialUseView";
 
 
 type View =
@@ -37,7 +38,8 @@ type View =
   | 'history'
   | 'account'
   | 'dead-time'
-  | 'frames';
+  | 'frames'
+  | 'material-use';
 
 const AuthenticatedApp: React.FC = () => {
   const { user, logout } = useAuth();
@@ -91,7 +93,9 @@ const AuthenticatedApp: React.FC = () => {
       case "dead-time":
         return <DeadTimeView />;   
       case "frames":
-        return <FramesView />;        
+        return <FramesView />;   
+      case "material-use":
+        return <MaterialUseView />;     
       default:
         // A user's default view might not be in the nav, but still valid.
         // If not, redirect to first allowed tab.
@@ -125,18 +129,25 @@ const AuthenticatedApp: React.FC = () => {
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation(); // 👈 add language
+
+  useEffect(() => {
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl font-semibold text-gray-600">{t('common.loading')}</div>
+        <div className="text-xl font-semibold text-gray-600">
+          {t('common.loading')}
+        </div>
       </div>
     );
   }
 
   return isAuthenticated ? <AuthenticatedApp /> : <LoginView />;
 };
+
 
 // Wrap the entire app in LanguageProvider to make the language context globally accessible
 const App: React.FC = () => {

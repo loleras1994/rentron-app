@@ -97,6 +97,23 @@ const SearchView: React.FC = () => {
           newLocationArea: details.newLocation?.area,
           newLocationPosition: details.newLocation?.position,
         });
+      case "ADJUSTED": {
+        const fromQty = details?.fromQty ?? details?.from_qty;
+        const toQty = details?.toQty ?? details?.to_qty;
+        const delta = details?.delta;
+
+        const parts = [];
+        if (fromQty != null && toQty != null) {
+          parts.push(t("search.historyDetails.adjustedFromTo", {
+            fromQty,
+            toQty,
+          }));
+        } else {
+          // fallback if backend didn't send both
+          parts.push(t("search.historyDetails.adjusted", { delta }));
+        }
+        return parts.join(" ");
+      }
 
       default:
         return JSON.stringify(details);
@@ -223,9 +240,6 @@ const SearchView: React.FC = () => {
                         >
                           <p className="font-semibold text-gray-800">
                             {t(`search.historyType.${event.type}`, {})}
-                          </p>
-                          <p className="text-gray-500">
-                            {formatTimestamp(event.timestamp)}
                           </p>
                           <p className="text-gray-500">
                             {formatTimestamp(event.timestamp)} ·{" "}
