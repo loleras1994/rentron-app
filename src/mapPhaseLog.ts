@@ -12,6 +12,7 @@ export function mapPhaseLog(raw: any): PhaseLog {
     productId: raw.product_id,
     phaseId: String(raw.phase_id),
     position: raw.position,
+    productionPosition: raw.production_position,
     startTime: raw.start_time,
     endTime: raw.end_time,
     quantityDone: raw.quantity_done,

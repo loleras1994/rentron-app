@@ -90,6 +90,7 @@ export interface PhaseLog {
   productId: string;
   phaseId: string;
   position: string;
+  productionPosition: string;
   startTime: string;
   endTime: string | null;
   quantityDone: number;

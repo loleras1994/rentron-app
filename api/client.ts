@@ -409,6 +409,7 @@ type ProductDefDTO = {
     totalSetupTime?: number;
     totalProductionTime?: number;
     position: string; // ✅ string (required)
+    productionPosition?: string;
   }[];
 };
 
@@ -525,6 +526,30 @@ export const finishPhase = async (
     }),
   });
 
+// ✅ NEW: manual phase log (used by OrderKeeper delete -> productionPosition="DELETED")
+export const createPhaseLog = async (data: {
+  orderNumber: string;
+  productionSheetNumber: string;
+
+  // REQUIRED for schema OR backend can infer if you omit them,
+  // but best is to send them because you already have them in update mode.
+  productId?: string;          // send if you have it
+  phaseId?: string;            // send if you have it
+  totalQuantity?: number;      // send sheet.quantity
+
+  // REQUIRED conceptually
+  position: string;            // original position preserved
+  productionPosition: string;  // e.g. "DELETED" (or any tag you want)
+
+  operatorUsername: string;
+  stage?: string | null;
+}): Promise<PhaseLog> =>
+  apiFetch<PhaseLog>("/phase_logs/delete_phase", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+
 export const getDailyLogs = async () => {
   const rows = await apiFetch<any[]>(`/daily_logs`);
   return rows.map(mapDailyLog);
@@ -562,6 +587,7 @@ export interface ParsedPdfMulti {
       phases: {
         phaseId: string;
         position: string;
+        productionPosition?: string;
         setupTime: number;
         productionTimePerPiece: number;
       }[];

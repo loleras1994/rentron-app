@@ -43,11 +43,7 @@ function autoFitColumnsFromAoA(data: any[][]) {
   return widths;
 }
 
-function downloadXlsxFromAoA(
-  aoa: any[][],
-  fileName: string,
-  sheetName = "Report"
-) {
+function downloadXlsxFromAoA(aoa: any[][], fileName: string, sheetName = "Report") {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
@@ -62,11 +58,8 @@ function downloadXlsxFromAoA(
 --------------------------------------------------------- */
 const InfraOperatorView: React.FC = () => {
   const { t } = useTranslation();
-  const [reportDate, setReportDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split("T")[0]);
   const [isExporting, setIsExporting] = useState(false);
-
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -81,9 +74,7 @@ const InfraOperatorView: React.FC = () => {
       });
 
       if (logs.length === 0) {
-        alert(
-            t("infraOperator.noDataForDate", { date: reportDate })
-        );
+        alert(t("infraOperator.noDataForDate", { date: reportDate }));
         return;
       }
 
@@ -113,9 +104,7 @@ const InfraOperatorView: React.FC = () => {
 
         // FindMaterialTime always comes from PHASE logs (your rule)
         const hasFindMaterialTime =
-          log.type !== "dead" &&
-          typeof log.findMaterialTime === "number" &&
-          log.findMaterialTime > 0;
+          log.type !== "dead" && typeof log.findMaterialTime === "number" && log.findMaterialTime > 0;
 
         // Convert findMaterialTime into a "dead time" row with code 90
         const isConverted90 = hasFindMaterialTime;
@@ -123,10 +112,17 @@ const InfraOperatorView: React.FC = () => {
 
         const deadCodeForType = isConverted90 ? "90" : log.deadCode ?? "";
 
-        // Type cell (translated labels)
+        const isDeletedPhase =
+          log.type !== "dead" &&
+          (String(log.stage || "").toLowerCase() === "delete" ||
+            String(log.productionPosition ?? log.production_position ?? "").toUpperCase() === "DELETED");
+
         const typeValue = isDead
           ? `${t("infraOperator.excel.type.deadTime")}: ${deadCodeForType}`
-          : `${t("infraOperator.excel.type.phase")}: ${log.phaseId ?? ""}`;
+          : isDeletedPhase
+            ? `${t("infraOperator.excel.type.phase")}: ${log.phaseId ?? ""} / Deleted`
+            : `${t("infraOperator.excel.type.phase")}: ${log.phaseId ?? ""}`;
+
 
         // Setup time:
         // - only for phase rows
@@ -172,6 +168,7 @@ const InfraOperatorView: React.FC = () => {
         const productionSheetNumber = isConverted90 ? "" : (log.productionSheetNumber ?? "");
         const productId = isConverted90 ? "" : (log.productId ?? "");
         const position = isDead ? "" : (log.position ?? "");
+
         if (isConverted90) {
           setupTime = "";
           quantityDone = "";
@@ -262,10 +259,7 @@ const InfraOperatorView: React.FC = () => {
 
       <div className="space-y-4">
         <div>
-          <label
-            htmlFor="report-date"
-            className="block text-sm font-medium text-gray-700"
-          >
+          <label htmlFor="report-date" className="block text-sm font-medium text-gray-700">
             {t("infraOperator.selectDate")}
           </label>
 

@@ -214,6 +214,7 @@
     }
   },
   "orderkeeper": {
+    "lockedTag": "مقفلة",
     "removePhase": "إزالة مرحلة",
     "moveUp": "نقل للأعلى",
     "moveDown": "نقل للأسفل",
@@ -286,7 +287,8 @@
     "alerts": {
       "updatedSuccess": "تم تحديث الطلب بنجاح.",
       "updatedLockedPhases": "تم التحديث، لكن بعض المراحل كانت مقفلة (بدأت بالفعل): {{phases}}",
-      "saveFailed": "فشل حفظ الطلب: {{message}}"
+      "saveFailed": "فشل حفظ الطلب: {{message}}",
+      "materialsLocked": "المواد مقفلة"
     },
     "errors": {
       "noSheetsForOrder": "لم يتم العثور على أوراق إنتاج لهذا الطلب."

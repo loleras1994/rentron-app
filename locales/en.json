@@ -215,6 +215,7 @@
     }
   },
   "orderkeeper": {
+    "lockedTag": "Locked",
     "removePhase": "Remove phase",
     "moveUp": "Move up",
     "moveDown": "Move down",
@@ -287,7 +288,8 @@
     "alerts": {
       "updatedSuccess": "Order updated successfully.",
       "updatedLockedPhases": "Updated, but some phases were locked (already started): {{phases}}",
-      "saveFailed": "Failed to save order: {{message}}"
+      "saveFailed": "Failed to save order: {{message}}",
+      "materialsLocked": "Materials locked"
     },
     "errors": {
       "noSheetsForOrder": "No production sheets found for this order."

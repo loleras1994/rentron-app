@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import type { Product, ProductForUI, ProductionSheet, Phase } from "../src/types";
 import { QRCodeSVG } from "qrcode.react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { useAuth } from "../hooks/useAuth";
 
 // ----------------------------------------------------
 // Helpers (stable phase identity to avoid "ghost phase")
@@ -26,11 +27,15 @@ const posNum = (v: any) => {
 const normPos = (v: unknown): string => String(v ?? "").trim();
 const normalizeTo10 = (n: number) => Math.round(n / 10) * 10;
 
-const sortPhasesByPosition = (phases: any[]) =>
-  [...phases].sort((a, b) => posNum(a.position) - posNum(b.position));
-
 const ensurePhaseUids = (phases: any[]) =>
   (phases || []).map((p: PhaseWithUID) => ({ ...p, __uid: p.__uid || makeUid() }));
+
+const sortPhases = (phases: any[], useProduction: boolean) =>
+  [...(phases || [])].sort(
+    (a, b) =>
+      posNum(useProduction ? a.productionPosition : a.position) -
+      posNum(useProduction ? b.productionPosition : b.position)
+  );
 
 // =====================================================
 // ProductDefinition Component
@@ -43,6 +48,7 @@ const ProductDefinition: React.FC<{
   showPhasePosition?: boolean; // update mode
   lockedPositions?: string[]; // from phase_logs
   materialsLocked?: boolean; // if any phase started
+  onPhaseDeleted?: (info: { position: string; phaseId: string; productionPosition?: string }) => void; // ✅ NEW
 }> = ({
   product,
   updateProduct,
@@ -51,20 +57,29 @@ const ProductDefinition: React.FC<{
   showPhasePosition = false,
   lockedPositions = [],
   materialsLocked = false,
+  onPhaseDeleted,
 }) => {
   const { t } = useTranslation();
   const qty = (product as any).quantity || 0;
 
   const lockedSet = useMemo(() => new Set((lockedPositions || []).map(normPos)), [lockedPositions]);
 
+  // ✅ update mode uses productionPosition ordering
+  const useProductionOrdering = !autoPositioning;
+
   const renumberMaterials = (materials: any[]) =>
     (materials || []).map((m, i) => ({ ...m, position: String((i + 1) * 10) }));
 
   const shiftAllPhasePositions = (phases: any[], delta10: number) =>
-    (phases || []).map((p) => ({
-      ...p,
-      position: String(normalizeTo10(posNum(p.position) + delta10)),
-    }));
+    (phases || []).map((p) => {
+      const newPos = String(normalizeTo10(posNum(p.position) + delta10));
+      const newProdPos = String(normalizeTo10(posNum(p.productionPosition ?? p.position) + delta10));
+      return {
+        ...p,
+        position: newPos,
+        productionPosition: newProdPos, // ✅ keep in sync in create mode
+      };
+    });
 
   const sanitizeLayoutCreateMode = (materials: any[], phases: any[]) => {
     // Create mode: always compact
@@ -73,12 +88,16 @@ const ProductDefinition: React.FC<{
 
     let phs = ensurePhaseUids(phases || [])
       .filter((p: any) => !p.__deleted)
-      .map((p: any, i: number) => ({
-        ...p,
-        position: String(maxMatPos + (i + 1) * 10),
-      }));
+      .map((p: any, i: number) => {
+        const newPos = String(maxMatPos + (i + 1) * 10);
+        return {
+          ...p,
+          position: newPos,
+          productionPosition: newPos, // ✅ NEW
+        };
+      });
 
-    phs = sortPhasesByPosition(phs);
+    phs = sortPhases(phs, false);
 
     return { materials: mats, phases: phs };
   };
@@ -109,8 +128,12 @@ const ProductDefinition: React.FC<{
         originalIndex,
       }))
       .filter(({ p }) => !p.__deleted && String(p.phaseId || "").trim() !== "")
-      .sort((a, b) => posNum(a.p.position) - posNum(b.p.position));
-  }, [product.phases]);
+      .sort((a, b) => {
+        const av = useProductionOrdering ? a.p.productionPosition : a.p.position;
+        const bv = useProductionOrdering ? b.p.productionPosition : b.p.position;
+        return posNum(av) - posNum(bv);
+      });
+  }, [product.phases, useProductionOrdering]);
 
   const updateField = (field: "materials" | "phases", index: number, key: string, value: any) => {
     const copy: any = { ...product };
@@ -120,7 +143,7 @@ const ProductDefinition: React.FC<{
     // MATERIALS LOCK
     if (field === "materials" && materialsLocked) return;
 
-    // PHASE LOCK (by position)
+    // PHASE LOCK (by ORIGINAL position from phase_logs)
     if (field === "phases") {
       const ph = copy.phases[index];
       if (ph && lockedSet.has(normPos(ph.position))) return;
@@ -140,12 +163,13 @@ const ProductDefinition: React.FC<{
       const total = parseFloat(value) || 0;
       copy.phases[index] = { ...copy.phases[index] };
       copy.phases[index].totalProductionTime = parseFloat(total.toFixed(2));
-      copy.phases[index].productionTimePerPiece =
-        qty > 0 ? parseFloat((total / qty).toFixed(2)) : 0;
+      copy.phases[index].productionTimePerPiece = qty > 0 ? parseFloat((total / qty).toFixed(2)) : 0;
 
       // create mode: auto position
       if (autoPositioning) {
-        copy.phases[index].position = String((copy.materials.length + index + 1) * 10);
+        const newPos = String((copy.materials.length + index + 1) * 10);
+        copy.phases[index].position = newPos;
+        copy.phases[index].productionPosition = newPos; // ✅ keep same in create
       }
     }
     // ---- PHASE SETUP TIME ----
@@ -156,7 +180,9 @@ const ProductDefinition: React.FC<{
       copy.phases[index].setupTime = parseFloat(total.toFixed(2));
 
       if (autoPositioning) {
-        copy.phases[index].position = String((copy.materials.length + index + 1) * 10);
+        const newPos = String((copy.materials.length + index + 1) * 10);
+        copy.phases[index].position = newPos;
+        copy.phases[index].productionPosition = newPos; // ✅ keep same in create
       }
     }
     // ---- DIRECT FIELD ----
@@ -165,7 +191,7 @@ const ProductDefinition: React.FC<{
       if (field === "materials" && autoPositioning) copy.materials = renumberMaterials(copy.materials);
     }
 
-    copy.phases = sortPhasesByPosition(copy.phases);
+    copy.phases = sortPhases(copy.phases, useProductionOrdering);
     updateProduct(copy);
   };
 
@@ -213,7 +239,7 @@ const ProductDefinition: React.FC<{
     updateProduct(copy);
   };
 
-  // IMPORTANT: in update mode we "delete" by tombstone (keep position, phaseId=""), so backend overwrites old
+  // ✅ update mode: tombstone + phase log
   const removePhase = (renderIndex: number) => {
     const cur = phasesWithIndex[renderIndex]?.p as PhaseWithUID | undefined;
     if (!cur?.__uid) return;
@@ -227,10 +253,32 @@ const ProductDefinition: React.FC<{
     const idx = copy.phases.findIndex((x: PhaseWithUID) => x.__uid === cur.__uid);
     if (idx < 0) return;
 
-    // delete from state (both create + update)
-    copy.phases.splice(idx, 1);
+    // create mode: remove
+    if (autoPositioning) {
+      copy.phases.splice(idx, 1);
+      copy.phases = sortPhases(copy.phases, false);
+      updateProduct(copy);
+      return;
+    }
 
-    copy.phases = sortPhasesByPosition(copy.phases);
+    const original = copy.phases[idx];
+
+    // best-effort phase log trigger
+    onPhaseDeleted?.({
+      position: String(original.position ?? ""),
+      phaseId: String(original.phaseId ?? ""),
+      productionPosition: String(original.productionPosition ?? ""),
+    });
+
+    // tombstone: keep original position, mark productionPosition=DELETED
+    copy.phases[idx] = {
+      ...original,
+      phaseId: "",
+      __deleted: true,
+      productionPosition: "DELETED",
+    };
+
+    copy.phases = sortPhases(copy.phases, true);
     updateProduct(copy);
   };
 
@@ -255,6 +303,7 @@ const ProductDefinition: React.FC<{
         productionTimePerPiece: 0,
         totalProductionTime: 0,
         position: newPos,
+        productionPosition: newPos, // ✅ keep same in create
       });
 
       const fixed2 = sanitizeLayoutCreateMode(copy.materials, copy.phases);
@@ -264,10 +313,13 @@ const ProductDefinition: React.FC<{
       return;
     }
 
-    // update mode: pick next free position (don’t touch locked)
-    const used = new Set((copy.phases || []).map((p: any) => normPos(p.position)));
-    let p = normalizeTo10(Math.max(10, ...Array.from(used).map((x) => posNum(x))) + 10);
-    while (used.has(String(p)) || lockedSet.has(String(p))) p += 10;
+    // ✅ update mode: position="EXTRA", productionPosition=last+10
+    const maxProdPos = copy.phases.reduce((mx: number, ph: any) => {
+      const v = posNum(ph.productionPosition ?? ph.position);
+      return v > mx ? v : mx;
+    }, 0);
+
+    const newProdPos = String(normalizeTo10((maxProdPos || 0) + 10));
 
     copy.phases.push({
       __uid: makeUid(),
@@ -276,14 +328,15 @@ const ProductDefinition: React.FC<{
       totalSetupTime: 0,
       productionTimePerPiece: 0,
       totalProductionTime: 0,
-      position: String(p),
+      position: "EXTRA",
+      productionPosition: newProdPos,
     });
 
-    copy.phases = sortPhasesByPosition(copy.phases);
+    copy.phases = sortPhases(copy.phases, true);
     updateProduct(copy);
   };
 
-  // Move only if both sides are unlocked
+  // ✅ update mode reorder: swap productionPosition only (do NOT touch position)
   const movePhase = (renderIndex: number, direction: -1 | 1) => {
     const a = phasesWithIndex[renderIndex]?.p as PhaseWithUID | undefined;
     const b = phasesWithIndex[renderIndex + direction]?.p as PhaseWithUID | undefined;
@@ -303,14 +356,31 @@ const ProductDefinition: React.FC<{
     const pa = { ...copy.phases[aIdx] };
     const pb = { ...copy.phases[bIdx] };
 
-    const tmp = pa.position;
-    pa.position = pb.position;
-    pb.position = tmp;
+    if (autoPositioning) {
+      // create mode: swap position (and keep prod in sync)
+      const tmp = pa.position;
+      pa.position = pb.position;
+      pb.position = tmp;
+      pa.productionPosition = pa.position;
+      pb.productionPosition = pb.position;
+
+      copy.phases[aIdx] = pa;
+      copy.phases[bIdx] = pb;
+
+      copy.phases = sortPhases(copy.phases, false);
+      updateProduct(copy);
+      return;
+    }
+
+    // update mode: swap productionPosition only
+    const tmpProd = pa.productionPosition ?? pa.position;
+    pa.productionPosition = pb.productionPosition ?? pb.position;
+    pb.productionPosition = tmpProd;
 
     copy.phases[aIdx] = pa;
     copy.phases[bIdx] = pb;
 
-    copy.phases = sortPhasesByPosition(copy.phases);
+    copy.phases = sortPhases(copy.phases, true);
     updateProduct(copy);
   };
 
@@ -384,11 +454,12 @@ const ProductDefinition: React.FC<{
 
           const totalSetup = p.totalSetupTime !== undefined ? p.totalSetupTime : p.setupTime;
           const isLocked = lockedSet.has(normPos(p.position));
+          const prodPos = (p as any).productionPosition ?? p.position;
 
           return (
             <div
-              key={(p as any).__uid || `${originalIndex}-${p.phaseId}-${p.position}`}
-              className="grid grid-cols-12 gap-2 mb-2 items-end"
+              key={(p as any).__uid || `${originalIndex}-${p.phaseId}-${p.position}-${prodPos}`}
+              className="grid grid-cols-12 gap-x-3 gap-y-2 mb-3 p-2 rounded-md border bg-white"
             >
               <div className="col-span-4">
                 <select
@@ -407,7 +478,8 @@ const ProductDefinition: React.FC<{
 
               <div className="col-span-3">
                 <label className="block text-xs text-gray-600 mb-1">
-                  {t("orderkeeper.labels.setupPerPhase")}: {Number(p.setupTime || 0).toFixed(1)} {t("orderkeeper.units.minutes")}
+                  {t("orderkeeper.labels.setupPerPhase")}: {Number(p.setupTime || 0).toFixed(1)}{" "}
+                  {t("orderkeeper.units.minutes")}
                 </label>
                 <input
                   type="number"
@@ -436,13 +508,16 @@ const ProductDefinition: React.FC<{
 
               <div className="col-span-2 flex flex-col items-end gap-1">
                 {showPhasePosition && (
-                  <div className="text-xs text-gray-600">
+                  <div className="col-span-12 text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
                     {t("orderkeeper.position")}: <span className="font-semibold">{p.position}</span>
+                    {"  "} | {"  "}
+                    {t("orderkeeper.productionPosition")}:{" "}
+                    <span className="font-semibold">{String(prodPos)}</span>
                     {isLocked ? <span className="ml-1 text-red-600">({t("orderkeeper.lockedTag")})</span> : null}
                   </div>
                 )}
 
-                <div className="flex gap-1">
+                <div className="col-span-12 md:col-span-2 flex justify-end items-end gap-1">
                   {showPhasePosition && (
                     <>
                       <button
@@ -486,7 +561,6 @@ const ProductDefinition: React.FC<{
                   </button>
                 </div>
               </div>
-
             </div>
           );
         })}
@@ -534,6 +608,8 @@ const OrderKeeperView: React.FC = () => {
   // Prevent repeated auto-confirm calls
   const lastConfirmedOrderRef = useRef<{ mode: Mode; order: string } | null>(null);
   const lastConfirmedSheetRef = useRef<{ order: string; sheet: string } | null>(null);
+
+  const { user } = useAuth();
 
   useEffect(() => {
     api.getProducts().then(setExistingProducts);
@@ -613,6 +689,7 @@ const OrderKeeperView: React.FC = () => {
         copy.phases = ensurePhaseUids(copy.phases || []).map((p: any, i: number) => {
           const totalProd = p.totalProductionTime ?? p.productionTimePerPiece * qty;
           const totalSetup = p.totalSetupTime ?? p.setupTime;
+          const fallbackPos = String(p.position ?? (copy.materials.length + i + 1) * 10);
           return {
             ...p,
             __uid: p.__uid || makeUid(),
@@ -620,7 +697,8 @@ const OrderKeeperView: React.FC = () => {
             productionTimePerPiece: qty > 0 ? totalProd / qty : p.productionTimePerPiece,
             totalSetupTime: totalSetup,
             setupTime: totalSetup,
-            position: String(p.position ?? (copy.materials.length + i + 1) * 10),
+            position: fallbackPos,
+            productionPosition: String(p.productionPosition ?? fallbackPos), // ✅ NEW
           };
         });
 
@@ -632,8 +710,8 @@ const OrderKeeperView: React.FC = () => {
     setSheets(newSheets);
   };
 
-  // Build DTO that works with YOUR backend merge-by-position and allows deletes via tombstones
-  const toProductDefDTO = (p: ProductDefWithMeta): any => {
+  // Build DTO that works with backend merge-by-position and supports update ordering by productionPosition + tombstones
+  const toProductDefDTO = (p: ProductDefWithMeta, useProdOrdering: boolean): any => {
     const qty = Number((p as any).quantity || 0);
 
     const materials = (p.materials || []).map((m: any, i: number) => ({
@@ -643,19 +721,26 @@ const OrderKeeperView: React.FC = () => {
       position: m.position != null ? String(m.position) : String((i + 1) * 10),
     }));
 
-    // send only real phases user currently sees
+    // ✅ create mode: only real phases
+    // ✅ update mode: include tombstones (phaseId="") so backend can clear, and order by productionPosition
     const phases = ensurePhaseUids(p.phases || [])
-      .filter((ph: any) => !ph.__deleted)
-      .filter((ph: any) => String(ph.phaseId || "").trim() !== "")
+      .filter((ph: any) => {
+        if (useProdOrdering) return true; // keep tombstones too
+        return !ph.__deleted && String(ph.phaseId || "").trim() !== "";
+      })
       .map((ph: any) => ({
-        phaseId: String(ph.phaseId).trim(),
+        phaseId: String(ph.phaseId ?? "").trim(), // can be "" for tombstone
         position: String(ph.position ?? ""),
+        productionPosition: String(ph.productionPosition ?? (useProdOrdering ? "" : ph.position ?? "")),
         setupTime: Number(ph.setupTime || 0),
         productionTimePerPiece: Number(ph.productionTimePerPiece || 0),
         totalSetupTime: ph.totalSetupTime != null ? Number(ph.totalSetupTime) : undefined,
         totalProductionTime: ph.totalProductionTime != null ? Number(ph.totalProductionTime) : undefined,
       }))
-      .sort((a: any, b: any) => posNum(a.position) - posNum(b.position));
+      .sort((a: any, b: any) =>
+        posNum(useProdOrdering ? a.productionPosition : a.position) -
+        posNum(useProdOrdering ? b.productionPosition : b.position)
+      );
 
     return {
       id: p.id,
@@ -665,6 +750,30 @@ const OrderKeeperView: React.FC = () => {
     };
   };
 
+  // ✅ phase log creation on delete (best-effort; won’t block UI)
+  const createDeletedPhaseLog = async (info: { position: string; phaseId: string; productionPosition?: string }) => {
+    if (mode !== "update") return;
+    const ord = orderNumber.trim();
+    const sheetNum = sheets[0]?.number;
+    if (!ord || !sheetNum) return;
+    if (!user) return;
+
+    try {
+      const fn = (api as any).createPhaseLog;
+      if (typeof fn !== "function") return;
+
+      await fn({
+        operatorUsername: user.username,
+        orderNumber: ord,
+        productionSheetNumber: sheetNum,
+        position: info.position, // ✅ original position preserved
+        productionPosition: "DELETED",
+        phaseId: info.phaseId || null,
+      });
+    } catch (e) {
+      console.warn("createPhaseLog failed", e);
+    }
+  };
 
   const handleSave = async () => {
     if (!orderNumber.trim() || sheets.length === 0) return;
@@ -722,7 +831,7 @@ const OrderKeeperView: React.FC = () => {
           productId: s.productId,
           quantity: parseInt(s.quantity, 10),
           orderNumber,
-          productDef: toProductDefDTO(s.productDef as any),
+          productDef: toProductDefDTO(s.productDef as any, mode === "update"),
         }));
 
       if (sheetDtos.length === 0) return;
@@ -762,13 +871,10 @@ const OrderKeeperView: React.FC = () => {
               };
             })();
 
-        const snapshotPhasePositions = (base.phases || []).map((p: any) => normPos(p.position)).filter(Boolean);
-
         const productDef: ProductDefWithMeta = {
           id: base.id,
           name: base.name,
           quantity: qty,
-          __snapshotPhasePositions: Array.from(new Set(snapshotPhasePositions)),
           __lockedPositions: lockedPositions,
           __materialsLocked: lockedPositions.length > 0,
           materials: (base.materials || []).map((m: any, i: number) => {
@@ -785,6 +891,7 @@ const OrderKeeperView: React.FC = () => {
             const prodPerPiece = Number(p.productionTimePerPiece ?? 0);
             const totalProd = Number(p.totalProductionTime ?? prodPerPiece * qty);
             const setup = Number(p.totalSetupTime ?? p.setupTime ?? 0);
+            const fallbackPos = String(p.position ?? ((base.materials?.length || 0) + i + 1) * 10);
             return {
               ...p,
               __uid: p.__uid || makeUid(),
@@ -794,7 +901,8 @@ const OrderKeeperView: React.FC = () => {
               totalSetupTime: setup,
               productionTimePerPiece: qty > 0 ? totalProd / qty : 0,
               totalProductionTime: totalProd,
-              position: String(p.position ?? ((base.materials?.length || 0) + i + 1) * 10),
+              position: fallbackPos,
+              productionPosition: String(p.productionPosition ?? fallbackPos), // ✅ NEW
             };
           }),
         };
@@ -909,28 +1017,38 @@ const OrderKeeperView: React.FC = () => {
     }
   };
 
-  // Compute locked positions from phase_logs (without changing backend GET)
+  // Compute locked positions from phase_logs (exclude DELETED logs)
   const getLockedPositionsForSheet = async (orderNum: string, sheetNum: string) => {
     try {
       const logs: any[] = await api.getPhaseLogs();
       const locked = new Set<string>();
-      let hasAnyLog = false;
+      let hasAnyNonDeletedLog = false;
+
+      const isDeletedLog = (l: any) => {
+        const pp = String(l.productionPosition ?? l.production_position ?? "").trim().toUpperCase();
+        // treat delete markers as non-locking
+        return pp === "DELETED";
+      };
 
       for (const l of logs || []) {
         const o = String(l.orderNumber ?? l.order_number ?? "").trim();
         const s = String(l.productionSheetNumber ?? l.production_sheet_number ?? "").trim();
         if (o !== orderNum || s !== sheetNum) continue;
 
-        hasAnyLog = true;
+        if (isDeletedLog(l)) continue; // ✅ do NOT lock from deleted phase logs
+
+        hasAnyNonDeletedLog = true;
+
         const pos = String(l.position ?? "").trim();
         if (pos) locked.add(pos);
       }
 
-      return { lockedPositions: Array.from(locked), materialsLocked: hasAnyLog };
+      return { lockedPositions: Array.from(locked), materialsLocked: hasAnyNonDeletedLog };
     } catch {
       return { lockedPositions: [], materialsLocked: false };
     }
   };
+
 
   const confirmTargetSheet = async () => {
     if (!orderLocked || mode !== "update") return;
@@ -985,6 +1103,7 @@ const OrderKeeperView: React.FC = () => {
           const prodPerPiece = Number(p.productionTimePerPiece ?? 0);
           const totalProd = Number(p.totalProductionTime ?? prodPerPiece * qty);
           const setup = Number(p.totalSetupTime ?? p.setupTime ?? 0);
+          const fallbackPos = String(p.position ?? ((base.materials?.length || 0) + i + 1) * 10);
           return {
             ...p,
             __uid: p.__uid || makeUid(),
@@ -994,7 +1113,8 @@ const OrderKeeperView: React.FC = () => {
             totalSetupTime: setup,
             productionTimePerPiece: qty > 0 ? totalProd / qty : 0,
             totalProductionTime: totalProd,
-            position: String(p.position ?? ((base.materials?.length || 0) + i + 1) * 10),
+            position: fallbackPos,
+            productionPosition: String(p.productionPosition ?? fallbackPos), // ✅ NEW
           };
         }),
       };
@@ -1248,6 +1368,7 @@ const OrderKeeperView: React.FC = () => {
                     showPhasePosition={mode === "update"}
                     lockedPositions={lockedPositions}
                     materialsLocked={mode === "update" ? materialsLocked : false}
+                    onPhaseDeleted={createDeletedPhaseLog} // ✅ NEW
                   />
                 )}
               </div>
